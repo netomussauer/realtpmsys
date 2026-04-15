@@ -1,0 +1,1012 @@
+openapi: "3.1.0"
+
+info:
+  title: realtpmsys — API de Gerenciamento de Escola de Futebol
+  version: "1.0.0"
+  description: |
+    API REST para gerenciamento completo de escola de futebol.
+    Cobre cadastro de atletas, turmas, frequência e controle financeiro de mensalidades.
+  contact:
+    name: realtpmsys
+    email: admin@realtpmsys.local
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Desenvolvimento local
+  - url: https://api.realtpmsys.local/api/v1
+    description: Produção
+
+# =============================================================================
+# SEGURANÇA
+# =============================================================================
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ===========================================================================
+  # SCHEMAS COMPARTILHADOS
+  # ===========================================================================
+
+  schemas:
+
+    # ---- Paginação -----------------------------------------------------------
+    Pagination:
+      type: object
+      properties:
+        total:    { type: integer, example: 150 }
+        page:     { type: integer, example: 1 }
+        per_page: { type: integer, example: 20 }
+        pages:    { type: integer, example: 8 }
+
+    # ---- Erro (RFC 7807) -----------------------------------------------------
+    ProblemDetail:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type:     { type: string, example: "https://realtpmsys.local/errors/not-found" }
+        title:    { type: string, example: "Recurso não encontrado" }
+        status:   { type: integer, example: 404 }
+        detail:   { type: string, example: "Atleta com id 'abc' não encontrado" }
+        instance: { type: string, example: "/atletas/abc" }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:   { type: string }
+              message: { type: string }
+
+    # ---- Auth ----------------------------------------------------------------
+    LoginRequest:
+      type: object
+      required: [email, senha]
+      properties:
+        email: { type: string, format: email, example: "admin@realtpmsys.local" }
+        senha: { type: string, minLength: 8, example: "SenhaSegura123!" }
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:  { type: string }
+        refresh_token: { type: string }
+        token_type:    { type: string, example: "bearer" }
+        expires_in:    { type: integer, example: 3600 }
+
+    # ---- Atleta --------------------------------------------------------------
+    AtletaRequest:
+      type: object
+      required: [nome, data_nascimento]
+      properties:
+        nome:            { type: string, maxLength: 150, example: "João Silva" }
+        data_nascimento: { type: string, format: date,  example: "2012-03-15" }
+        cpf:             { type: string, pattern: "^\\d{11}$", example: "12345678901" }
+        rg:              { type: string, maxLength: 20 }
+        endereco:        { type: string, maxLength: 200 }
+        cidade:          { type: string, maxLength: 100 }
+        uf:              { type: string, pattern: "^[A-Z]{2}$", example: "SP" }
+        cep:             { type: string, pattern: "^\\d{8}$", example: "01310100" }
+        email:           { type: string, format: email }
+        telefone:        { type: string, maxLength: 15 }
+
+    AtletaResponse:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        nome:            { type: string }
+        data_nascimento: { type: string, format: date }
+        cpf:             { type: string }
+        email:           { type: string }
+        telefone:        { type: string }
+        status:          { type: string, enum: [ATIVO, INATIVO, SUSPENSO] }
+        responsaveis:
+          type: array
+          items: { $ref: "#/components/schemas/ResponsavelResponse" }
+        uniforme:        { $ref: "#/components/schemas/UniformeResponse" }
+        criado_em:       { type: string, format: date-time }
+        atualizado_em:   { type: string, format: date-time }
+
+    AtletaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AtletaResponse" }
+        pagination: { $ref: "#/components/schemas/Pagination" }
+
+    # ---- Responsável ---------------------------------------------------------
+    ResponsavelRequest:
+      type: object
+      required: [nome, telefone, parentesco]
+      properties:
+        nome:              { type: string, maxLength: 150 }
+        cpf:               { type: string, pattern: "^\\d{11}$" }
+        email:             { type: string, format: email }
+        telefone:          { type: string, maxLength: 15 }
+        parentesco:        { type: string, enum: [PAI, MAE, AVO, OUTRO] }
+        contato_principal: { type: boolean, default: false }
+
+    ResponsavelResponse:
+      allOf:
+        - $ref: "#/components/schemas/ResponsavelRequest"
+        - type: object
+          properties:
+            id:        { type: string, format: uuid }
+            atleta_id: { type: string, format: uuid }
+
+    # ---- Uniforme ------------------------------------------------------------
+    UniformeRequest:
+      type: object
+      required: [tam_camisa, tam_short, tam_chuteira]
+      properties:
+        tam_camisa:   { type: string, enum: [PP, P, M, G, GG, XGG] }
+        tam_short:    { type: string, enum: [PP, P, M, G, GG, XGG] }
+        tam_chuteira: { type: string, example: "36" }
+
+    UniformeResponse:
+      allOf:
+        - $ref: "#/components/schemas/UniformeRequest"
+        - type: object
+          properties:
+            id:        { type: string, format: uuid }
+            atleta_id: { type: string, format: uuid }
+
+    # ---- Turma ---------------------------------------------------------------
+    TurmaRequest:
+      type: object
+      required: [nome, faixa_etaria_min, faixa_etaria_max, capacidade_max]
+      properties:
+        nome:             { type: string, maxLength: 100 }
+        faixa_etaria_min: { type: integer, minimum: 4,  maximum: 18 }
+        faixa_etaria_max: { type: integer, minimum: 4,  maximum: 18 }
+        capacidade_max:   { type: integer, minimum: 1 }
+        treinador_id:     { type: string, format: uuid, nullable: true }
+        campo_id:         { type: string, format: uuid, nullable: true }
+        horarios:
+          type: array
+          items: { $ref: "#/components/schemas/HorarioTurmaRequest" }
+
+    TurmaResponse:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        nome:             { type: string }
+        faixa_etaria_min: { type: integer }
+        faixa_etaria_max: { type: integer }
+        capacidade_max:   { type: integer }
+        vagas_disponiveis:{ type: integer }
+        status:           { type: string, enum: [ATIVA, ENCERRADA, SUSPENSA] }
+        treinador:        { $ref: "#/components/schemas/TreinadorResumo" }
+        horarios:
+          type: array
+          items: { $ref: "#/components/schemas/HorarioTurmaResponse" }
+        criado_em:        { type: string, format: date-time }
+
+    TurmaListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/TurmaResponse" }
+        pagination: { $ref: "#/components/schemas/Pagination" }
+
+    HorarioTurmaRequest:
+      type: object
+      required: [dia_semana, hora_inicio, hora_fim]
+      properties:
+        dia_semana:  { type: string, enum: [SEG, TER, QUA, QUI, SEX, SAB, DOM] }
+        hora_inicio: { type: string, format: time, example: "08:00" }
+        hora_fim:    { type: string, format: time, example: "09:30" }
+
+    HorarioTurmaResponse:
+      allOf:
+        - $ref: "#/components/schemas/HorarioTurmaRequest"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+
+    TreinadorResumo:
+      type: object
+      properties:
+        id:   { type: string, format: uuid }
+        nome: { type: string }
+
+    # ---- Matrícula -----------------------------------------------------------
+    MatriculaRequest:
+      type: object
+      required: [atleta_id, data_inicio]
+      properties:
+        atleta_id:   { type: string, format: uuid }
+        data_inicio: { type: string, format: date }
+
+    MatriculaResponse:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        atleta_id:   { type: string, format: uuid }
+        atleta_nome: { type: string }
+        turma_id:    { type: string, format: uuid }
+        data_inicio: { type: string, format: date }
+        data_fim:    { type: string, format: date, nullable: true }
+        status:      { type: string, enum: [ATIVA, CANCELADA, TRANSFERIDA] }
+
+    # ---- Treino --------------------------------------------------------------
+    TreinoRequest:
+      type: object
+      required: [turma_id, data_treino]
+      properties:
+        turma_id:    { type: string, format: uuid }
+        data_treino: { type: string, format: date }
+        hora_inicio: { type: string, format: time, nullable: true }
+        hora_fim:    { type: string, format: time, nullable: true }
+        observacao:  { type: string, nullable: true }
+
+    TreinoResponse:
+      allOf:
+        - $ref: "#/components/schemas/TreinoRequest"
+        - type: object
+          properties:
+            id:        { type: string, format: uuid }
+            criado_em: { type: string, format: date-time }
+
+    # ---- Frequência ----------------------------------------------------------
+    FrequenciaItemRequest:
+      type: object
+      required: [atleta_id, presenca]
+      properties:
+        atleta_id:     { type: string, format: uuid }
+        presenca:      { type: string, enum: [PRESENTE, AUSENTE, JUSTIFICADO] }
+        justificativa: { type: string, nullable: true }
+
+    LancarFrequenciaRequest:
+      type: object
+      required: [frequencias]
+      properties:
+        frequencias:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/FrequenciaItemRequest" }
+
+    FrequenciaResponse:
+      type: object
+      properties:
+        id:            { type: string, format: uuid }
+        treino_id:     { type: string, format: uuid }
+        atleta_id:     { type: string, format: uuid }
+        atleta_nome:   { type: string }
+        presenca:      { type: string, enum: [PRESENTE, AUSENTE, JUSTIFICADO] }
+        justificativa: { type: string, nullable: true }
+        registrado_em: { type: string, format: date-time }
+
+    # ---- Plano ---------------------------------------------------------------
+    PlanoRequest:
+      type: object
+      required: [nome, dias_semana, valor_mensal, dia_vencimento]
+      properties:
+        nome:            { type: string, maxLength: 100 }
+        dias_semana:     { type: integer, enum: [2, 3, 5] }
+        valor_mensal:    { type: number, format: decimal, example: 200.00 }
+        dia_vencimento:  { type: integer, minimum: 1, maximum: 28 }
+
+    PlanoResponse:
+      allOf:
+        - $ref: "#/components/schemas/PlanoRequest"
+        - type: object
+          properties:
+            id:    { type: string, format: uuid }
+            ativo: { type: boolean }
+
+    # ---- Contrato ------------------------------------------------------------
+    ContratoRequest:
+      type: object
+      required: [atleta_id, plano_id, data_inicio]
+      properties:
+        atleta_id:       { type: string, format: uuid }
+        plano_id:        { type: string, format: uuid }
+        data_inicio:     { type: string, format: date }
+        valor_contratado:
+          type: number
+          format: decimal
+          description: "Se omitido, usa o valor atual do plano"
+          nullable: true
+
+    ContratoResponse:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        atleta_id:        { type: string, format: uuid }
+        atleta_nome:      { type: string }
+        plano:            { $ref: "#/components/schemas/PlanoResponse" }
+        data_inicio:      { type: string, format: date }
+        data_fim:         { type: string, format: date, nullable: true }
+        valor_contratado: { type: number, format: decimal }
+        status:           { type: string, enum: [ATIVO, CANCELADO, ENCERRADO] }
+
+    # ---- Mensalidade ---------------------------------------------------------
+    MensalidadeResponse:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        atleta_id:        { type: string, format: uuid }
+        atleta_nome:      { type: string }
+        competencia_ano:  { type: integer, example: 2026 }
+        competencia_mes:  { type: integer, example: 4 }
+        data_vencimento:  { type: string, format: date }
+        valor:            { type: number, format: decimal }
+        valor_pago:       { type: number, format: decimal, nullable: true }
+        status:           { type: string, enum: [PENDENTE, PAGO, VENCIDO, CANCELADO, ISENTO] }
+        data_pagamento:   { type: string, format: date, nullable: true }
+        forma_pagamento:  { type: string, nullable: true }
+
+    MensalidadeListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/MensalidadeResponse" }
+        pagination: { $ref: "#/components/schemas/Pagination" }
+        resumo:
+          type: object
+          properties:
+            total_pendente: { type: number }
+            total_vencido:  { type: number }
+            total_pago:     { type: number }
+
+    RegistrarPagamentoRequest:
+      type: object
+      required: [valor_pago, data_pagamento, forma_pagamento]
+      properties:
+        valor_pago:      { type: number, format: decimal, example: 200.00 }
+        data_pagamento:  { type: string, format: date }
+        forma_pagamento: { type: string, enum: [PIX, DINHEIRO, CARTAO_DEBITO, CARTAO_CREDITO, BOLETO, TRANSFERENCIA] }
+        observacao:      { type: string, nullable: true }
+
+    GerarMensalidadesRequest:
+      type: object
+      required: [competencia_ano, competencia_mes]
+      properties:
+        competencia_ano: { type: integer, example: 2026 }
+        competencia_mes: { type: integer, minimum: 1, maximum: 12, example: 5 }
+
+    GerarMensalidadesResponse:
+      type: object
+      properties:
+        geradas:    { type: integer, example: 45 }
+        ignoradas:  { type: integer, example: 3, description: "Já existiam (idempotência)" }
+        com_erro:   { type: integer, example: 0 }
+
+    # ---- Relatórios ----------------------------------------------------------
+    RelatorioInadimplenciaResponse:
+      type: object
+      properties:
+        competencia_ano: { type: integer }
+        competencia_mes: { type: integer }
+        total_atletas_ativos:     { type: integer }
+        total_inadimplentes:      { type: integer }
+        percentual_inadimplencia: { type: number, format: float }
+        valor_total_em_aberto:    { type: number, format: decimal }
+        inadimplentes:
+          type: array
+          items:
+            type: object
+            properties:
+              atleta_id:      { type: string, format: uuid }
+              atleta_nome:    { type: string }
+              mensalidades_vencidas: { type: integer }
+              valor_total:    { type: number, format: decimal }
+              ultima_vencimento: { type: string, format: date }
+
+    RelatorioFrequenciaAtletaResponse:
+      type: object
+      properties:
+        atleta_id:   { type: string, format: uuid }
+        atleta_nome: { type: string }
+        periodo:
+          type: object
+          properties:
+            data_inicio: { type: string, format: date }
+            data_fim:    { type: string, format: date }
+        total_treinos:    { type: integer }
+        total_presentes:  { type: integer }
+        total_ausentes:   { type: integer }
+        total_justificados: { type: integer }
+        percentual_presenca: { type: number, format: float }
+
+# =============================================================================
+# PATHS
+# =============================================================================
+
+paths:
+
+  # ---- AUTH ------------------------------------------------------------------
+
+  /auth/login:
+    post:
+      tags: [Autenticação]
+      summary: Login e geração de JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Login realizado com sucesso
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "401":
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  /auth/refresh:
+    post:
+      tags: [Autenticação]
+      summary: Renova access token via refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: Token renovado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "401":
+          description: Refresh token inválido ou expirado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  # ---- ATLETAS ---------------------------------------------------------------
+
+  /atletas:
+    get:
+      tags: [Atletas]
+      summary: Lista atletas com paginação e filtros
+      parameters:
+        - name: nome
+          in: query
+          schema: { type: string }
+          description: Filtro parcial por nome
+        - name: status
+          in: query
+          schema: { type: string, enum: [ATIVO, INATIVO, SUSPENSO] }
+        - name: turma_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: Lista de atletas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtletaListResponse" }
+    post:
+      tags: [Atletas]
+      summary: Cadastra novo atleta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AtletaRequest" }
+      responses:
+        "201":
+          description: Atleta cadastrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtletaResponse" }
+        "422":
+          description: Dados inválidos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+        "409":
+          description: CPF já cadastrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  /atletas/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Atletas]
+      summary: Detalhe do atleta com responsáveis e uniforme
+      responses:
+        "200":
+          description: Atleta encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtletaResponse" }
+        "404":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+          description: Não encontrado
+    put:
+      tags: [Atletas]
+      summary: Atualiza dados do atleta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AtletaRequest" }
+      responses:
+        "200":
+          description: Atleta atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtletaResponse" }
+        "404":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+          description: Não encontrado
+    delete:
+      tags: [Atletas]
+      summary: Inativa atleta (soft delete)
+      responses:
+        "204":
+          description: Atleta inativado
+        "404":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+          description: Não encontrado
+
+  /atletas/{id}/responsaveis:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Atletas]
+      summary: Adiciona responsável ao atleta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResponsavelRequest" }
+      responses:
+        "201":
+          description: Responsável adicionado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResponsavelResponse" }
+
+  /atletas/{id}/uniforme:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [Atletas]
+      summary: Atualiza uniforme do atleta (cria se não existir)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UniformeRequest" }
+      responses:
+        "200":
+          description: Uniforme atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UniformeResponse" }
+
+  # ---- TURMAS ----------------------------------------------------------------
+
+  /turmas:
+    get:
+      tags: [Turmas]
+      summary: Lista turmas
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [ATIVA, ENCERRADA, SUSPENSA] }
+        - name: treinador_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Lista de turmas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TurmaListResponse" }
+    post:
+      tags: [Turmas]
+      summary: Cria nova turma
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TurmaRequest" }
+      responses:
+        "201":
+          description: Turma criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TurmaResponse" }
+
+  /turmas/{id}/matriculas:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Turmas]
+      summary: Lista matrículas da turma
+      responses:
+        "200":
+          description: Lista de matrículas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/MatriculaResponse" }
+    post:
+      tags: [Turmas]
+      summary: Matricula atleta na turma
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MatriculaRequest" }
+      responses:
+        "201":
+          description: Atleta matriculado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatriculaResponse" }
+        "409":
+          description: Atleta já matriculado ou turma sem vagas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  # ---- TREINOS ---------------------------------------------------------------
+
+  /treinos:
+    post:
+      tags: [Frequência]
+      summary: Registra nova sessão de treino
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TreinoRequest" }
+      responses:
+        "201":
+          description: Treino criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TreinoResponse" }
+        "409":
+          description: Já existe treino para esta turma nesta data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  /treinos/{id}/frequencias:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Frequência]
+      summary: Lança lista de presenças do treino (em lote, idempotente)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LancarFrequenciaRequest" }
+      responses:
+        "200":
+          description: Frequências registradas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  registradas: { type: integer }
+                  atualizadas: { type: integer }
+    get:
+      tags: [Frequência]
+      summary: Consulta frequências do treino
+      responses:
+        "200":
+          description: Lista de frequências
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/FrequenciaResponse" }
+
+  # ---- PLANOS ----------------------------------------------------------------
+
+  /planos:
+    get:
+      tags: [Financeiro]
+      summary: Lista planos disponíveis
+      responses:
+        "200":
+          description: Lista de planos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/PlanoResponse" }
+    post:
+      tags: [Financeiro]
+      summary: Cria novo plano
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanoRequest" }
+      responses:
+        "201":
+          description: Plano criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanoResponse" }
+
+  # ---- CONTRATOS -------------------------------------------------------------
+
+  /contratos:
+    post:
+      tags: [Financeiro]
+      summary: Firma contrato entre atleta e plano
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContratoRequest" }
+      responses:
+        "201":
+          description: Contrato firmado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContratoResponse" }
+        "409":
+          description: Atleta já possui contrato ativo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  # ---- MENSALIDADES ----------------------------------------------------------
+
+  /mensalidades:
+    get:
+      tags: [Financeiro]
+      summary: Lista mensalidades com filtros
+      parameters:
+        - name: atleta_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDENTE, PAGO, VENCIDO, CANCELADO, ISENTO] }
+        - name: competencia_ano
+          in: query
+          schema: { type: integer }
+        - name: competencia_mes
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: Lista de mensalidades com resumo financeiro
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MensalidadeListResponse" }
+
+  /mensalidades/gerar:
+    post:
+      tags: [Financeiro]
+      summary: Gera mensalidades de um mês para todos os contratos ativos (idempotente)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GerarMensalidadesRequest" }
+      responses:
+        "200":
+          description: Resultado da geração
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GerarMensalidadesResponse" }
+
+  /mensalidades/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Financeiro]
+      summary: Detalhe da mensalidade
+      responses:
+        "200":
+          description: Mensalidade encontrada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MensalidadeResponse" }
+        "404":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+          description: Não encontrada
+
+  /mensalidades/{id}/pagar:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Financeiro]
+      summary: Registra pagamento da mensalidade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegistrarPagamentoRequest" }
+      responses:
+        "200":
+          description: Pagamento registrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MensalidadeResponse" }
+        "409":
+          description: Mensalidade já está paga
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  /mensalidades/{id}/cancelar:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Financeiro]
+      summary: Cancela mensalidade
+      responses:
+        "200":
+          description: Mensalidade cancelada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MensalidadeResponse" }
+
+  # ---- RELATÓRIOS ------------------------------------------------------------
+
+  /relatorios/inadimplencia:
+    get:
+      tags: [Relatórios]
+      summary: Relatório de inadimplência
+      parameters:
+        - name: competencia_ano
+          in: query
+          required: true
+          schema: { type: integer, example: 2026 }
+        - name: competencia_mes
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 12 }
+      responses:
+        "200":
+          description: Relatório de inadimplência
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RelatorioInadimplenciaResponse" }
+
+  /relatorios/frequencia/atleta/{atleta_id}:
+    parameters:
+      - name: atleta_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: data_inicio
+        in: query
+        required: true
+        schema: { type: string, format: date }
+      - name: data_fim
+        in: query
+        required: true
+        schema: { type: string, format: date }
+    get:
+      tags: [Relatórios]
+      summary: Frequência de um atleta em um período
+      responses:
+        "200":
+          description: Relatório de frequência do atleta
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RelatorioFrequenciaAtletaResponse" }
+
+  /relatorios/frequencia/turma/{turma_id}:
+    parameters:
+      - name: turma_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: data_inicio
+        in: query
+        required: true
+        schema: { type: string, format: date }
+      - name: data_fim
+        in: query
+        required: true
+        schema: { type: string, format: date }
+    get:
+      tags: [Relatórios]
+      summary: Frequência consolidada de uma turma em um período
+      responses:
+        "200":
+          description: Relatório de frequência da turma
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  turma_id:   { type: string, format: uuid }
+                  turma_nome: { type: string }
+                  periodo:
+                    type: object
+                    properties:
+                      data_inicio: { type: string, format: date }
+                      data_fim:    { type: string, format: date }
+                  total_treinos: { type: integer }
+                  atletas:
+                    type: array
+                    items: { $ref: "#/components/schemas/RelatorioFrequenciaAtletaResponse" }
