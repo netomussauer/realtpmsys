@@ -35,7 +35,9 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, shared.ErrConflict),
 		errors.Is(err, shared.ErrContratoAtivoExistente),
 		errors.Is(err, shared.ErrMensalidadeJaPaga),
-		errors.Is(err, shared.ErrAtletaJaMatriculado):
+		errors.Is(err, shared.ErrAtletaJaMatriculado),
+		errors.Is(err, shared.ErrTurmaSemVagas),
+		errors.Is(err, shared.ErrTurmaNaoAtiva):
 		p = Problem{
 			Type:     baseURL + "/conflict",
 			Title:    "Conflito de estado",
@@ -43,10 +45,21 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 			Detail:   err.Error(),
 			Instance: r.URL.Path,
 		}
+	case errors.Is(err, shared.ErrCredenciaisInvalidas),
+		errors.Is(err, shared.ErrUsuarioInativo):
+		p = Problem{
+			Type:     baseURL + "/unauthorized",
+			Title:    "Credenciais inválidas",
+			Status:   http.StatusUnauthorized,
+			Detail:   err.Error(),
+			Instance: r.URL.Path,
+		}
 	case errors.Is(err, shared.ErrDomainViolation),
 		errors.Is(err, shared.ErrDiasSemanasInvalido),
 		errors.Is(err, shared.ErrValorInvalido),
-		errors.Is(err, shared.ErrCPFInvalido):
+		errors.Is(err, shared.ErrCPFInvalido),
+		errors.Is(err, shared.ErrFaixaEtariaInvalida),
+		errors.Is(err, shared.ErrIdadeForaDaFaixa):
 		p = Problem{
 			Type:     baseURL + "/domain-error",
 			Title:    "Regra de negócio violada",

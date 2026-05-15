@@ -14,10 +14,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
+	appatleta "github.com/realtpmsys/realtpmsys/internal/application/atleta"
 	appfinanceiro "github.com/realtpmsys/realtpmsys/internal/application/financeiro"
+	appfreq "github.com/realtpmsys/realtpmsys/internal/application/frequencia"
+	appidentidade "github.com/realtpmsys/realtpmsys/internal/application/identidade"
+	appturma "github.com/realtpmsys/realtpmsys/internal/application/turma"
 	"github.com/realtpmsys/realtpmsys/internal/config"
-	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
 	infrahttp "github.com/realtpmsys/realtpmsys/internal/infrastructure/http"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/jobs"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/repository"
 )
@@ -35,13 +39,11 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
-	// ── Configuração ────────────────────────────────────────────────────────
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("carregar config: %w", err)
 	}
 
-	// ── Pool de conexões PostgreSQL ──────────────────────────────────────────
 	poolCfg, err := pgxpool.ParseConfig(cfg.DB.URL)
 	if err != nil {
 		return fmt.Errorf("parsear DB_URL: %w", err)
@@ -61,40 +63,61 @@ func run(logger *slog.Logger) error {
 	}
 	logger.Info("banco de dados conectado")
 
-	// ── Repositórios (Adapters) ──────────────────────────────────────────────
+	// Repositories
 	mensalidadeRepo := repository.NewPgxMensalidadeRepository(pool)
-	// TODO: inicializar demais repositórios conforme implementação avança
-	// atletaRepo    := repository.NewPgxAtletaRepository(pool)
-	// contratoRepo  := repository.NewPgxContratoRepository(pool)
-	// planoRepo     := repository.NewPgxPlanoRepository(pool)
+	planoRepo := repository.NewPgxPlanoRepository(pool)
+	contratoRepo := repository.NewPgxContratoRepository(pool)
+	usuarioRepo := repository.NewPgxUsuarioRepository(pool)
+	atletaRepo := repository.NewPgxAtletaRepository(pool)
+	turmaRepo := repository.NewPgxTurmaRepository(pool)
+	matriculaRepo := repository.NewPgxMatriculaRepository(pool)
+	treinoRepo := repository.NewPgxTreinoRepository(pool)
+	frequenciaRepo := repository.NewPgxFrequenciaRepository(pool)
 
-	// ── Use Cases ────────────────────────────────────────────────────────────
-	// registrarPagamento := appfinanceiro.NewRegistrarPagamentoUseCase(mensalidadeRepo)
-	// cancelarMensalidade := appfinanceiro.NewCancelarMensalidadeUseCase(mensalidadeRepo)
-	// gerarMensalidades := appfinanceiro.NewGerarMensalidadesUseCase(contratoRepo, mensalidadeRepo, planoRepo)
+	// Use Cases — Financeiro
+	registrarPagamento := appfinanceiro.NewRegistrarPagamentoUseCase(mensalidadeRepo)
+	cancelarMensalidade := appfinanceiro.NewCancelarMensalidadeUseCase(mensalidadeRepo)
+	gerarMensalidades := appfinanceiro.NewGerarMensalidadesUseCase(contratoRepo, mensalidadeRepo, planoRepo)
+	firmarContrato := appfinanceiro.NewFirmarContratoUseCase(contratoRepo, planoRepo)
 
-	// Temporário: handlers com repositório direto até demais repos serem implementados
-	_ = mensalidadeRepo
-	_ = appfinanceiro.NewRegistrarPagamentoUseCase // referência para evitar lint
+	// Use Cases — Identidade
+	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
 
-	// ── Handlers HTTP ────────────────────────────────────────────────────────
-	// mensalidadeHandler := handler.NewMensalidadeHandler(
-	//     registrarPagamento, cancelarMensalidade, gerarMensalidades, mensalidadeRepo,
-	// )
-	_ = handler.NewMensalidadeHandler // referência para evitar lint
+	// Use Cases — Atletas
+	cadastrarAtleta := appatleta.NewCadastrarAtletaUseCase(atletaRepo)
+	atualizarAtleta := appatleta.NewAtualizarAtletaUseCase(atletaRepo)
+	mudarStatusAtleta := appatleta.NewMudarStatusAtletaUseCase(atletaRepo)
+	removerAtleta := appatleta.NewRemoverAtletaUseCase(atletaRepo)
 
-	// ── Scheduler (cron jobs) ────────────────────────────────────────────────
+	// Use Cases — Turmas + Matrículas
+	criarTurma := appturma.NewCriarTurmaUseCase(turmaRepo)
+	atualizarTurma := appturma.NewAtualizarTurmaUseCase(turmaRepo)
+	mudarStatusTurma := appturma.NewMudarStatusTurmaUseCase(turmaRepo)
+	matricularAtleta := appturma.NewMatricularAtletaUseCase(turmaRepo, matriculaRepo, atletaRepo)
+	cancelarMatricula := appturma.NewCancelarMatriculaUseCase(matriculaRepo)
+
+	// Use Cases — Frequência (Treino + lançamento de presenças)
+	criarTreino := appfreq.NewCriarTreinoUseCase(treinoRepo, turmaRepo)
+	lancarFrequencia := appfreq.NewLancarFrequenciaUseCase(treinoRepo, frequenciaRepo)
+
+	// Handlers
+	handlers := infrahttp.Handlers{
+		Auth:        handler.NewAuthHandler(loginUseCase),
+		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
+		Turma:       handler.NewTurmaHandler(criarTurma, atualizarTurma, mudarStatusTurma, matricularAtleta, cancelarMatricula, turmaRepo, matriculaRepo),
+		Treino:      handler.NewTreinoHandler(criarTreino, lancarFrequencia, treinoRepo, frequenciaRepo),
+		Mensalidade: handler.NewMensalidadeHandler(registrarPagamento, cancelarMensalidade, gerarMensalidades, mensalidadeRepo),
+		Contrato:    handler.NewContratoHandler(firmarContrato),
+	}
+
+	// Scheduler
 	scheduler := cron.New(cron.WithLocation(mustLoadLocation("America/Sao_Paulo")))
-	// mensalidadeJob := jobs.NewMensalidadeJob(gerarMensalidades, logger)
-	// mensalidadeJob.Register(scheduler)
-	_ = jobs.NewMensalidadeJob
+	mensalidadeJob := jobs.NewMensalidadeJob(gerarMensalidades, logger)
+	mensalidadeJob.Register(scheduler)
 	scheduler.Start()
 	defer scheduler.Stop()
 
-	// ── Router HTTP ──────────────────────────────────────────────────────────
-	// router := infrahttp.NewRouter(cfg.JWT.Secret, mensalidadeHandler)
-	router := infrahttp.NewRouter(cfg.JWT.Secret, nil) // nil temporário
-	_ = router
+	router := infrahttp.NewRouter(cfg.JWT.Secret, handlers)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
@@ -103,7 +126,6 @@ func run(logger *slog.Logger) error {
 		WriteTimeout: time.Duration(cfg.Server.WriteTimeoutSecs) * time.Second,
 	}
 
-	// ── Graceful shutdown ────────────────────────────────────────────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

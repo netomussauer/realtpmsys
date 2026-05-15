@@ -27,32 +27,32 @@ WHERE deletado_em IS NULL
   AND (sqlc.narg(nome)::text   IS NULL OR nome   ILIKE '%' || sqlc.narg(nome)   || '%')
   AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status));
 
--- name: InsertAtleta :one
+-- name: UpsertAtleta :one
 INSERT INTO atletas (
     id, nome, data_nascimento, cpf, rg,
     endereco, cidade, uf, cep,
-    email, telefone, status,
+    email, telefone, status, usuario_responsavel_id,
     criado_em, atualizado_em
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9,
-    $10, $11, $12,
+    $10, $11, $12, $13,
     NOW(), NOW()
 )
-RETURNING *;
-
--- name: UpdateAtleta :one
-UPDATE atletas
-SET
-    nome            = $2,
-    data_nascimento = $3,
-    cpf             = $4,
-    email           = $5,
-    telefone        = $6,
-    status          = $7,
-    atualizado_em   = NOW()
-WHERE id = $1
-  AND deletado_em IS NULL
+ON CONFLICT (id) DO UPDATE SET
+    nome                   = EXCLUDED.nome,
+    data_nascimento        = EXCLUDED.data_nascimento,
+    cpf                    = EXCLUDED.cpf,
+    rg                     = EXCLUDED.rg,
+    endereco               = EXCLUDED.endereco,
+    cidade                 = EXCLUDED.cidade,
+    uf                     = EXCLUDED.uf,
+    cep                    = EXCLUDED.cep,
+    email                  = EXCLUDED.email,
+    telefone               = EXCLUDED.telefone,
+    status                 = EXCLUDED.status,
+    usuario_responsavel_id = EXCLUDED.usuario_responsavel_id,
+    atualizado_em          = NOW()
 RETURNING *;
 
 -- name: SoftDeleteAtleta :exec

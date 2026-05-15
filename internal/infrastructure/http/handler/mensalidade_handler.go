@@ -157,6 +157,13 @@ func (h *MensalidadeHandler) Cancelar(w http.ResponseWriter, r *http.Request) {
 // ─── POST /mensalidades/gerar ─────────────────────────────────────────────────
 
 func (h *MensalidadeHandler) Gerar(w http.ResponseWriter, r *http.Request) {
+	if h.gerarMensalidades == nil {
+		response.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "geração de mensalidades indisponível: PlanoRepository/ContratoRepository ainda não implementados",
+		})
+		return
+	}
+
 	var body struct {
 		CompetenciaAno int `json:"competencia_ano"`
 		CompetenciaMes int `json:"competencia_mes"`

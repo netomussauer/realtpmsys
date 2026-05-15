@@ -28,8 +28,14 @@ var (
 
 	// Turmas
 	ErrTurmaSemVagas          = errors.New("turma atingiu capacidade máxima")
+	ErrTurmaNaoAtiva          = errors.New("turma não está ATIVA")
 	ErrAtletaJaMatriculado    = errors.New("atleta já possui matrícula ativa nesta turma")
 	ErrFaixaEtariaInvalida    = errors.New("faixa etária inválida: min deve ser <= max, entre 4 e 18")
+	ErrIdadeForaDaFaixa       = errors.New("idade do atleta está fora da faixa etária da turma")
+
+	// Identidade
+	ErrCredenciaisInvalidas = errors.New("email ou senha inválidos")
+	ErrUsuarioInativo       = errors.New("usuário inativo")
 )
 
 // DomainError enriquece um erro sentinela com contexto adicional.

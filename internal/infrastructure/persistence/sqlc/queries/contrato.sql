@@ -16,22 +16,18 @@ FROM contratos c
 JOIN planos    p ON p.id = c.plano_id
 WHERE c.status = 'ATIVO';
 
--- name: InsertContrato :one
+-- name: UpsertContrato :one
 INSERT INTO contratos (
     id, atleta_id, plano_id,
-    data_inicio, valor_contratado, status,
+    data_inicio, data_fim, valor_contratado, status,
     criado_em, atualizado_em
 ) VALUES (
-    $1, $2, $3, $4, $5, $6,
+    $1, $2, $3, $4, $5, $6, $7,
     NOW(), NOW()
 )
-RETURNING *;
-
--- name: UpdateContratoStatus :one
-UPDATE contratos
-SET
-    status        = $2,
-    data_fim      = $3,
-    atualizado_em = NOW()
-WHERE id = $1
+ON CONFLICT (id) DO UPDATE SET
+    data_fim         = EXCLUDED.data_fim,
+    valor_contratado = EXCLUDED.valor_contratado,
+    status           = EXCLUDED.status,
+    atualizado_em    = NOW()
 RETURNING *;

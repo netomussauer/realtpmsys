@@ -1,0 +1,21 @@
+# Binários
+/bin/
+realtpmsys
+*.exe
+
+# Ambiente
+.env
+.env.local
+
+# Cobertura / test artifacts
+coverage.out
+coverage.html
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
