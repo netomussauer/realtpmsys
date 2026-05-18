@@ -4,7 +4,7 @@
 # bookworm (Debian) ja vem com git pre-instalado, evitando dependencia
 # de dl-cdn.alpinelinux.org durante o build (egress do nó k3s-worker-cicd
 # ainda apresenta intermitência para esse host específico).
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /src
 
