@@ -179,6 +179,11 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] Migrations golang-migrate (`000001_initial_schema`, `000002_admin_password`)
 - [x] `config.go` — leitura validada de variáveis de ambiente
 - [x] **Build verde:** `go build ./...` e `go vet ./...` passam sem erros
+- [x] Migrations aplicadas automaticamente no startup (`golang-migrate` como lib)
+- [x] **Dockerfile multi-stage** (golang:1.22-bookworm → distroless) com binário ~25 MB
+- [x] **Manifestos K8s** completos em `infra/k8s/` (namespace, Deployment, Service LoadBalancer MetalLB, SealedSecret template)
+- [x] **Application ArgoCD** em `infra/argocd/application.yaml`
+- [x] Deploy documentado em [infra/README.md](infra/README.md)
 - [ ] Repositórios + handlers: Responsavel, Uniforme (sub-entidades de Atleta)
 - [ ] Testes (zero arquivos `*_test.go` no momento)
 - [ ] Dockerfile + manifestos K8s para deploy via ArgoCD

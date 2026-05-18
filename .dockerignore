@@ -1,0 +1,33 @@
+# Diretórios de build local
+/bin/
+realtpmsys
+*.exe
+
+# Ambiente local — nunca embarcar no container
+.env
+.env.local
+.env.*.local
+
+# Cobertura / testes
+coverage.out
+coverage.html
+
+# Git e CI
+.git/
+.github/
+.gitignore
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Documentação não usada em runtime
+docs/
+README.md
+*.md
+
+# Manifestos K8s — gerenciados pelo ArgoCD, não pelo Docker build
+infra/

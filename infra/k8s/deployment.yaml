@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realtpmsys-api
+  namespace: realtpmsys
+  labels:
+    app.kubernetes.io/name: "realtpmsys-api"
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/component: "api"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "realtpmsys-api"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "realtpmsys-api"
+        app.kubernetes.io/version: "latest"
+        app.kubernetes.io/component: "api"
+        environment: "dev"
+        lab_id: "lab-k8s-01"
+        lab_owner: "jose.mussauer"
+    spec:
+      nodeSelector:
+        workload: cicd
+      # Harbor exige autenticação para pull. harbor-pull-secret é criado
+      # uma vez no ns realtpmsys clonando harbor-creds do ns cicd (robot
+      # account tekton-pusher com push+pull em realtpmsys/*).
+      imagePullSecrets:
+        - name: harbor-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        # uid/gid 65532 = nonroot user da imagem distroless
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: api
+          image: harbor.lab.local/realtpmsys/api:latest
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: realtpmsys-secrets
+                  key: pg-password
+            - name: DB_URL
+              value: "postgres://realtpmsys:$(PG_PASSWORD)@postgresql.shared-infra.svc.cluster.local:5432/realtpmsys?sslmode=disable"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: realtpmsys-secrets
+                  key: jwt-secret
+            - name: APP_PORT
+              value: "8000"
+            - name: APP_RUN_MIGRATIONS
+              value: "true"
+            - name: APP_MIGRATIONS_PATH
+              value: "/app/migrations"
+            - name: JWT_ACCESS_EXPIRES_MINUTES
+              value: "60"
+            - name: JWT_REFRESH_EXPIRES_DAYS
+              value: "7"
+            - name: DB_MAX_CONNS
+              value: "10"
+            - name: DB_MIN_CONNS
+              value: "2"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

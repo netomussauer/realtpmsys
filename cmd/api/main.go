@@ -26,6 +26,7 @@ import (
 	infrahttp "github.com/realtpmsys/realtpmsys/internal/infrastructure/http"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/jobs"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/migrate"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/repository"
 )
 
@@ -45,6 +46,15 @@ func run(logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("carregar config: %w", err)
+	}
+
+	// Aplica migrations antes de abrir o pool (migrate cria conexão própria).
+	if cfg.Migrations.Run {
+		if err := migrate.Run(logger, cfg.DB.URL, cfg.Migrations.Path); err != nil {
+			return fmt.Errorf("aplicar migrations: %w", err)
+		}
+	} else {
+		logger.Info("migrations desabilitadas (APP_RUN_MIGRATIONS=false)")
 	}
 
 	poolCfg, err := pgxpool.ParseConfig(cfg.DB.URL)

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: realtpmsys
+  labels:
+    app.kubernetes.io/name: "realtpmsys"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"

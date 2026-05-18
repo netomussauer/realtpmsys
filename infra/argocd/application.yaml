@@ -1,0 +1,64 @@
+# ArgoCD Application — registra o realtpmsys no GitOps do infra-lab.
+#
+# Aplicar uma única vez (manual, fora do GitOps do app-of-apps):
+#   kubectl apply -f infra/argocd/application.yaml
+#
+# Alternativa: copiar este arquivo para o repo infra-lab em
+# kubernetes/apps/realtpmsys.yaml — o app-of-apps fará pickup automático.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: realtpmsys
+  namespace: cicd
+  labels:
+    app.kubernetes.io/name: "realtpmsys"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Mirror interno do GitHub para o Gitea do lab (acesso sem internet).
+    # Para apontar direto para o GitHub público, trocar por:
+    #   https://github.com/netomussauer/realtpmsys.git
+    repoURL: "http://gitea.lab.local/lab/realtpmsys.git"
+    targetRevision: HEAD
+    path: "infra/k8s"
+    directory:
+      recurse: true
+      # SealedSecret pode ser mantido fora do diretório enquanto não estiver
+      # selado de verdade — excluir o .example evita parsing inválido.
+      exclude: "*.example"
+
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: realtpmsys
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: "5s"
+        factor: 2
+        maxDuration: "3m"
+
+  # Ignorar diffs de campos gerenciados pelo cluster (HPA, etc.)
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

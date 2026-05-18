@@ -12,12 +12,20 @@ type Config struct {
 	DB        DBConfig
 	JWT       JWTConfig
 	Server    ServerConfig
+	Migrations MigrationsConfig
 }
 
 type DBConfig struct {
 	URL      string
 	MaxConns int32
 	MinConns int32
+}
+
+type MigrationsConfig struct {
+	// Run controla se as migrations rodam no startup. Default: true.
+	Run bool
+	// Path é o diretório contendo os arquivos .sql do golang-migrate.
+	Path string
 }
 
 type JWTConfig struct {
@@ -60,7 +68,21 @@ func Load() (*Config, error) {
 			ReadTimeoutSecs:  envInt("APP_READ_TIMEOUT_SECONDS", 30),
 			WriteTimeoutSecs: envInt("APP_WRITE_TIMEOUT_SECONDS", 30),
 		},
+		Migrations: MigrationsConfig{
+			Run:  envBool("APP_RUN_MIGRATIONS", true),
+			Path: envStr("APP_MIGRATIONS_PATH", "./migrations"),
+		},
 	}, nil
+}
+
+func envBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err == nil {
+			return b
+		}
+	}
+	return fallback
 }
 
 func envStr(key, fallback string) string {
