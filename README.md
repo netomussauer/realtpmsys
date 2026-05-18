@@ -92,6 +92,10 @@ make run
 > - **Públicos:** `/health`, `POST /auth/login` (retorna `access_token` Bearer)
 > - **Atletas:** CRUD completo em `/api/v1/atletas` (List/Get ADMIN+TREINADOR,
 >   escrita ADMIN). Inclui `PATCH /{id}/inativar`, `/suspender`, `/reativar`.
+> - **Treinadores:** CRUD em `/api/v1/treinadores` (List/Get ADMIN+TREINADOR,
+>   escrita ADMIN). Vincula usuário existente; `PATCH /{id}/inativar`/`/ativar`.
+> - **Campos:** CRUD em `/api/v1/campos` (List/Get ADMIN+TREINADOR, escrita
+>   ADMIN). Toggle via `PATCH /{id}/ativar`/`/inativar`.
 > - **Turmas:** CRUD + horários em `/api/v1/turmas` (List/Get ADMIN+TREINADOR,
 >   escrita ADMIN). Transições `/encerrar`, `/suspender`, `/reativar`.
 > - **Matrículas:** `POST /api/v1/turmas/{id}/matriculas`,
@@ -103,8 +107,11 @@ make run
 >   lote (upsert idempotente por treino+atleta). `GET` consulta o registro.
 > - **Financeiro:** `POST /api/v1/contratos` (ADMIN), `/api/v1/mensalidades`
 >   (List, Get, Pagar, Cancelar, Gerar)
-> - Job mensal `0 6 1 * *` ativo via cron
-> - Endpoints de Relatórios (inadimplência, frequência consolidada) ainda pendentes
+> - **Relatórios:** `GET /api/v1/relatorios/inadimplencia?competencia_ano=&competencia_mes=` (ADMIN),
+>   `/relatorios/frequencia/{atleta_id}` e `/relatorios/frequencia/turma/{turma_id}`
+>   (ADMIN+TREINADOR) com taxa de presença calculada.
+> - Cron jobs ativos: geração de mensalidades `0 6 1 * *` (mensal) e
+>   marcação `PENDENTE→VENCIDO` `0 1 * * *` (diário)
 >
 > **Credenciais iniciais (após `make migrate-up`):**
 > `admin@realtpmsys.local` / `admin123` — **trocar em produção**.
@@ -147,29 +154,32 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] Erros sentinela de domínio com garantia compile-time
 - [x] Use Cases financeiros: `FirmarContrato`, `GerarMensalidades`, `RegistrarPagamento`, `CancelarMensalidade`
 - [x] `GeradorMensalidadeService` — lógica pura sem I/O, 100% testável
-- [x] Repositórios pgx + sqlc: `Usuario`, `Atleta`, `Turma` (com horários em tx), `Matricula`, `Treino`, `Frequencia` (com SaveBatch), `Mensalidade`, `Plano`, `Contrato`
-- [x] Código sqlc gerado (usuarios, atletas, turmas, horarios_turma, matriculas, treinos, frequencias, contratos, mensalidades, planos) com `sql_package: pgx/v5`
+- [x] Repositórios pgx + sqlc: `Usuario`, `Atleta`, `Treinador`, `Campo`, `Turma` (com horários em tx), `Matricula`, `Treino`, `Frequencia` (com SaveBatch), `Mensalidade`, `Plano`, `Contrato`
+- [x] Código sqlc gerado para todas as tabelas (usuarios, atletas, treinadores, campos, turmas, horarios_turma, matriculas, treinos, frequencias, contratos, mensalidades, planos) com `sql_package: pgx/v5`
 - [x] Domínio Identidade: `Usuario`, `Perfil` + `LoginUseCase` (bcrypt + JWT HS256)
 - [x] Domínio Turma: `Turma`, `HorarioTurma`, `Matricula` com máquinas de estado
 - [x] Domínio Frequência: `Treino` (com regra única por turma+data) e `Frequencia` (presença com validação de justificativa)
 - [x] Use cases Atleta: `Cadastrar`, `Atualizar`, `MudarStatus`, `Remover`
+- [x] Use cases Treinador: `Cadastrar` (valida usuário existe e único), `Atualizar`, `MudarStatus`, `Remover`
+- [x] Use cases Campo: `Criar`, `Atualizar`, `Toggle` (ativar/inativar)
 - [x] Use cases Turma: `Criar`, `Atualizar`, `MudarStatus`, `MatricularAtleta`, `CancelarMatricula`
 - [x] Use cases Frequência: `CriarTreino` (valida turma ATIVA, sem duplicidade), `LancarFrequencia` (lote idempotente)
 - [x] Regras de negócio em Matrícula: valida idade na faixa etária, capacidade da turma, duplicidade
 - [x] `AuthHandler` — endpoint público `POST /auth/login`
 - [x] `AtletaHandler` — CRUD completo + transições de status
+- [x] `TreinadorHandler` — CRUD + ativar/inativar (com validação de usuário associado)
+- [x] `CampoHandler` — CRUD + toggle ativo/inativo
 - [x] `TurmaHandler` — CRUD com horários + transições + endpoints de matrículas
 - [x] `TreinoHandler` — criar/listar treinos por turma + lançar/consultar frequências
 - [x] `ContratoHandler` — endpoint `POST /api/v1/contratos` (ADMIN)
 - [x] `MensalidadeHandler` com respostas RFC 7807 — endpoints completos
+- [x] Service + `RelatorioHandler` — inadimplência + frequência por atleta + frequência consolidada por turma (com taxa de presença)
 - [x] Middleware JWT (`Auth` + `RequirePerfil`) ativo em `/api/v1/*`
-- [x] Job agendado mensal `0 6 1 * *` ativo (gera mensalidades para todos os contratos ATIVO)
+- [x] Cron jobs do contexto Financeiro: `GerarMensalidades` mensal (`0 6 1 * *`) e `MarcarMensalidadesVencidas` diário (`0 1 * * *`)
 - [x] Migrations golang-migrate (`000001_initial_schema`, `000002_admin_password`)
 - [x] `config.go` — leitura validada de variáveis de ambiente
 - [x] **Build verde:** `go build ./...` e `go vet ./...` passam sem erros
-- [ ] Repositórios + handlers: Treinador, Campo, Responsavel, Uniforme
-- [ ] Endpoints de Relatórios (inadimplência, frequência consolidada por atleta/turma)
-- [ ] Use case `MarcarMensalidadesVencidasUseCase` (TODO em `mensalidade_job.go`)
+- [ ] Repositórios + handlers: Responsavel, Uniforme (sub-entidades de Atleta)
 - [ ] Testes (zero arquivos `*_test.go` no momento)
 - [ ] Dockerfile + manifestos K8s para deploy via ArgoCD
 

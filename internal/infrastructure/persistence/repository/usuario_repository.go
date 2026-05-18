@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/realtpmsys/realtpmsys/internal/domain/identidade"
@@ -30,6 +31,17 @@ func (r *PgxUsuarioRepository) GetByEmail(ctx context.Context, email string) (*i
 			return nil, nil
 		}
 		return nil, fmt.Errorf("GetUsuarioByEmail: %w", err)
+	}
+	return toUsuarioEntity(row), nil
+}
+
+func (r *PgxUsuarioRepository) GetByID(ctx context.Context, id uuid.UUID) (*identidade.Usuario, error) {
+	row, err := r.queries.GetUsuarioByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetUsuarioByID: %w", err)
 	}
 	return toUsuarioEntity(row), nil
 }

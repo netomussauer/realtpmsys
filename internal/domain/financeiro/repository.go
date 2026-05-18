@@ -28,6 +28,10 @@ type MensalidadeRepository interface {
 	List(ctx context.Context, filter MensalidadeFilter) ([]*Mensalidade, int64, error)
 	Save(ctx context.Context, mensalidade *Mensalidade) error
 	SaveBatch(ctx context.Context, mensalidades []*Mensalidade) error
+	// MarcarVencidas faz UPDATE em massa: PENDENTE → VENCIDO para
+	// mensalidades com data_vencimento < CURRENT_DATE. Retorna a contagem
+	// de linhas afetadas.
+	MarcarVencidas(ctx context.Context) (int64, error)
 }
 
 // MensalidadeFilter encapsula os parâmetros de listagem de mensalidades.

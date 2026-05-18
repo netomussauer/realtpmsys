@@ -554,7 +554,7 @@ type Plano struct {
 	AtualizadoEm  time.Time       `db:"atualizado_em" json:"atualizado_em"`
 }
 
-type Responsavei struct {
+type Responsavel struct {
 	ID               uuid.UUID `db:"id" json:"id"`
 	AtletaID         uuid.UUID `db:"atleta_id" json:"atleta_id"`
 	Nome             string    `db:"nome" json:"nome"`
@@ -567,7 +567,7 @@ type Responsavei struct {
 	AtualizadoEm     time.Time `db:"atualizado_em" json:"atualizado_em"`
 }
 
-type Treinadore struct {
+type Treinador struct {
 	ID           uuid.UUID  `db:"id" json:"id"`
 	UsuarioID    uuid.UUID  `db:"usuario_id" json:"usuario_id"`
 	Nome         string     `db:"nome" json:"nome"`

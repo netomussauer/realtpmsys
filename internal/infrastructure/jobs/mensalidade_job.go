@@ -10,24 +10,34 @@ import (
 	appfinanceiro "github.com/realtpmsys/realtpmsys/internal/application/financeiro"
 )
 
-// MensalidadeJob encapsula o job de geração automática de mensalidades.
+// MensalidadeJob encapsula os jobs do contexto Financeiro:
+//   - geração mensal de mensalidades (dia 1, 06:00)
+//   - marcação de mensalidades vencidas (todo dia, 01:00)
 type MensalidadeJob struct {
-	useCase *appfinanceiro.GerarMensalidadesUseCase
-	logger  *slog.Logger
+	gerar          *appfinanceiro.GerarMensalidadesUseCase
+	marcarVencidas *appfinanceiro.MarcarMensalidadesVencidasUseCase
+	logger         *slog.Logger
 }
 
-func NewMensalidadeJob(uc *appfinanceiro.GerarMensalidadesUseCase, logger *slog.Logger) *MensalidadeJob {
-	return &MensalidadeJob{useCase: uc, logger: logger}
+func NewMensalidadeJob(
+	gerar *appfinanceiro.GerarMensalidadesUseCase,
+	marcarVencidas *appfinanceiro.MarcarMensalidadesVencidasUseCase,
+	logger *slog.Logger,
+) *MensalidadeJob {
+	return &MensalidadeJob{
+		gerar:          gerar,
+		marcarVencidas: marcarVencidas,
+		logger:         logger,
+	}
 }
 
-// Register registra o job no scheduler com execução no dia 1 de cada mês às 06:00.
-// Também registra um job diário às 01:00 para marcar mensalidades como VENCIDO.
+// Register registra os jobs no scheduler.
 func (j *MensalidadeJob) Register(c *cron.Cron) {
 	// Gerar mensalidades: dia 1 de cada mês às 06:00
 	c.AddFunc("0 6 1 * *", j.gerarMesAtual) //nolint:errcheck
 
 	// Marcar vencidas: todo dia às 01:00
-	c.AddFunc("0 1 * * *", j.marcarVencidas) //nolint:errcheck
+	c.AddFunc("0 1 * * *", j.executarMarcarVencidas) //nolint:errcheck
 }
 
 func (j *MensalidadeJob) gerarMesAtual() {
@@ -45,7 +55,7 @@ func (j *MensalidadeJob) gerarMesAtual() {
 		"competencia_mes", input.CompetenciaMes,
 	)
 
-	result, err := j.useCase.Execute(ctx, input)
+	result, err := j.gerar.Execute(ctx, input)
 	if err != nil {
 		j.logger.Error("job_gerar_mensalidades_erro", "error", err)
 		return
@@ -58,8 +68,15 @@ func (j *MensalidadeJob) gerarMesAtual() {
 	)
 }
 
-func (j *MensalidadeJob) marcarVencidas() {
-	// TODO: implementar use case MarcarMensalidadesVencidasUseCase
-	// que chama a query fn_marcar_mensalidades_vencidas() do schema.sql
-	j.logger.Info("job_marcar_vencidas_executado")
+func (j *MensalidadeJob) executarMarcarVencidas() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	j.logger.Info("job_marcar_vencidas_inicio")
+	result, err := j.marcarVencidas.Execute(ctx)
+	if err != nil {
+		j.logger.Error("job_marcar_vencidas_erro", "error", err)
+		return
+	}
+	j.logger.Info("job_marcar_vencidas_fim", "atualizadas", result.Atualizadas)
 }

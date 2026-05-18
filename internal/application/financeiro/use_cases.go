@@ -205,6 +205,34 @@ func (uc *RegistrarPagamentoUseCase) Execute(ctx context.Context, in RegistrarPa
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MARCAR MENSALIDADES VENCIDAS (job diário)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// MarcarMensalidadesVencidasResult resume o efeito da operação em lote.
+type MarcarMensalidadesVencidasResult struct {
+	Atualizadas int64
+}
+
+// MarcarMensalidadesVencidasUseCase faz a transição PENDENTE→VENCIDO em massa
+// para mensalidades cujo data_vencimento já passou. Idempotente — pode rodar
+// múltiplas vezes no mesmo dia sem efeito colateral.
+type MarcarMensalidadesVencidasUseCase struct {
+	mensalidades financeiro.MensalidadeRepository
+}
+
+func NewMarcarMensalidadesVencidasUseCase(mensalidades financeiro.MensalidadeRepository) *MarcarMensalidadesVencidasUseCase {
+	return &MarcarMensalidadesVencidasUseCase{mensalidades: mensalidades}
+}
+
+func (uc *MarcarMensalidadesVencidasUseCase) Execute(ctx context.Context) (MarcarMensalidadesVencidasResult, error) {
+	n, err := uc.mensalidades.MarcarVencidas(ctx)
+	if err != nil {
+		return MarcarMensalidadesVencidasResult{}, fmt.Errorf("marcar vencidas: %w", err)
+	}
+	return MarcarMensalidadesVencidasResult{Atualizadas: n}, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CANCELAR MENSALIDADE
 // ─────────────────────────────────────────────────────────────────────────────
 

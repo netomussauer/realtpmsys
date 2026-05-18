@@ -15,9 +15,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
 	appatleta "github.com/realtpmsys/realtpmsys/internal/application/atleta"
+	appcampo "github.com/realtpmsys/realtpmsys/internal/application/campo"
 	appfinanceiro "github.com/realtpmsys/realtpmsys/internal/application/financeiro"
 	appfreq "github.com/realtpmsys/realtpmsys/internal/application/frequencia"
 	appidentidade "github.com/realtpmsys/realtpmsys/internal/application/identidade"
+	apprel "github.com/realtpmsys/realtpmsys/internal/application/relatorio"
+	apptreinador "github.com/realtpmsys/realtpmsys/internal/application/treinador"
 	appturma "github.com/realtpmsys/realtpmsys/internal/application/turma"
 	"github.com/realtpmsys/realtpmsys/internal/config"
 	infrahttp "github.com/realtpmsys/realtpmsys/internal/infrastructure/http"
@@ -73,11 +76,15 @@ func run(logger *slog.Logger) error {
 	matriculaRepo := repository.NewPgxMatriculaRepository(pool)
 	treinoRepo := repository.NewPgxTreinoRepository(pool)
 	frequenciaRepo := repository.NewPgxFrequenciaRepository(pool)
+	relatorioRepo := repository.NewPgxRelatorioRepository(pool)
+	treinadorRepo := repository.NewPgxTreinadorRepository(pool)
+	campoRepo := repository.NewPgxCampoRepository(pool)
 
 	// Use Cases — Financeiro
 	registrarPagamento := appfinanceiro.NewRegistrarPagamentoUseCase(mensalidadeRepo)
 	cancelarMensalidade := appfinanceiro.NewCancelarMensalidadeUseCase(mensalidadeRepo)
 	gerarMensalidades := appfinanceiro.NewGerarMensalidadesUseCase(contratoRepo, mensalidadeRepo, planoRepo)
+	marcarVencidas := appfinanceiro.NewMarcarMensalidadesVencidasUseCase(mensalidadeRepo)
 	firmarContrato := appfinanceiro.NewFirmarContratoUseCase(contratoRepo, planoRepo)
 
 	// Use Cases — Identidade
@@ -100,19 +107,36 @@ func run(logger *slog.Logger) error {
 	criarTreino := appfreq.NewCriarTreinoUseCase(treinoRepo, turmaRepo)
 	lancarFrequencia := appfreq.NewLancarFrequenciaUseCase(treinoRepo, frequenciaRepo)
 
+	// Service — Relatórios
+	relatorioService := apprel.NewService(relatorioRepo)
+
+	// Use Cases — Treinadores
+	cadastrarTreinador := apptreinador.NewCadastrarTreinadorUseCase(treinadorRepo, usuarioRepo)
+	atualizarTreinador := apptreinador.NewAtualizarTreinadorUseCase(treinadorRepo)
+	mudarStatusTreinador := apptreinador.NewMudarStatusTreinadorUseCase(treinadorRepo)
+	removerTreinador := apptreinador.NewRemoverTreinadorUseCase(treinadorRepo)
+
+	// Use Cases — Campos
+	criarCampo := appcampo.NewCriarCampoUseCase(campoRepo)
+	atualizarCampo := appcampo.NewAtualizarCampoUseCase(campoRepo)
+	toggleCampo := appcampo.NewToggleCampoUseCase(campoRepo)
+
 	// Handlers
 	handlers := infrahttp.Handlers{
 		Auth:        handler.NewAuthHandler(loginUseCase),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
+		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),
+		Campo:       handler.NewCampoHandler(criarCampo, atualizarCampo, toggleCampo, campoRepo),
 		Turma:       handler.NewTurmaHandler(criarTurma, atualizarTurma, mudarStatusTurma, matricularAtleta, cancelarMatricula, turmaRepo, matriculaRepo),
 		Treino:      handler.NewTreinoHandler(criarTreino, lancarFrequencia, treinoRepo, frequenciaRepo),
 		Mensalidade: handler.NewMensalidadeHandler(registrarPagamento, cancelarMensalidade, gerarMensalidades, mensalidadeRepo),
 		Contrato:    handler.NewContratoHandler(firmarContrato),
+		Relatorio:   handler.NewRelatorioHandler(relatorioService),
 	}
 
 	// Scheduler
 	scheduler := cron.New(cron.WithLocation(mustLoadLocation("America/Sao_Paulo")))
-	mensalidadeJob := jobs.NewMensalidadeJob(gerarMensalidades, logger)
+	mensalidadeJob := jobs.NewMensalidadeJob(gerarMensalidades, marcarVencidas, logger)
 	mensalidadeJob.Register(scheduler)
 	scheduler.Start()
 	defer scheduler.Stop()

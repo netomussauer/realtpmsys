@@ -15,10 +15,13 @@ import (
 type Handlers struct {
 	Auth        *handler.AuthHandler
 	Atleta      *handler.AtletaHandler
+	Treinador   *handler.TreinadorHandler
+	Campo       *handler.CampoHandler
 	Turma       *handler.TurmaHandler
 	Treino      *handler.TreinoHandler
 	Mensalidade *handler.MensalidadeHandler
 	Contrato    *handler.ContratoHandler
+	Relatorio   *handler.RelatorioHandler
 }
 
 // NewRouter constrói o router com todas as rotas e middlewares registrados.
@@ -67,6 +70,39 @@ func NewRouter(jwtSecret string, h Handlers) http.Handler {
 			})
 		})
 
+		// Treinadores
+		r.Route("/treinadores", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR"))
+				r.Get("/", h.Treinador.List)
+				r.Get("/{id}", h.Treinador.GetByID)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN"))
+				r.Post("/", h.Treinador.Cadastrar)
+				r.Put("/{id}", h.Treinador.Atualizar)
+				r.Delete("/{id}", h.Treinador.Remover)
+				r.Patch("/{id}/inativar", h.Treinador.Inativar)
+				r.Patch("/{id}/ativar", h.Treinador.Ativar)
+			})
+		})
+
+		// Campos
+		r.Route("/campos", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR"))
+				r.Get("/", h.Campo.List)
+				r.Get("/{id}", h.Campo.GetByID)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN"))
+				r.Post("/", h.Campo.Criar)
+				r.Put("/{id}", h.Campo.Atualizar)
+				r.Patch("/{id}/ativar", h.Campo.Ativar)
+				r.Patch("/{id}/inativar", h.Campo.Inativar)
+			})
+		})
+
 		// Turmas
 		r.Route("/turmas", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
@@ -109,6 +145,19 @@ func NewRouter(jwtSecret string, h Handlers) http.Handler {
 		r.Route("/contratos", func(r chi.Router) {
 			r.Use(middleware.RequirePerfil("ADMIN"))
 			r.Post("/", h.Contrato.Firmar)
+		})
+
+		// Relatórios
+		r.Route("/relatorios", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN"))
+				r.Get("/inadimplencia", h.Relatorio.Inadimplencia)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR"))
+				r.Get("/frequencia/{atleta_id}", h.Relatorio.FrequenciaAtleta)
+				r.Get("/frequencia/turma/{turma_id}", h.Relatorio.FrequenciaTurma)
+			})
 		})
 
 		// Mensalidades

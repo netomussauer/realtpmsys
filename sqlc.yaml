@@ -19,6 +19,10 @@ sql:
         emit_methods_with_db_argument: false
         emit_pointers_for_null_types: true
         query_parameter_limit: 1
+        rename:
+          # Corrige singularização incorreta do português pelo inflector.
+          treinadore:  "Treinador"
+          responsavei: "Responsavel"
         overrides:
           # ── UUID ──────────────────────────────────────────────────────────
           - db_type: "uuid"

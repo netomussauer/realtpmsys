@@ -126,6 +126,16 @@ func (r *PgxMensalidadeRepository) Save(ctx context.Context, m *financeiro.Mensa
 	return err
 }
 
+// MarcarVencidas atualiza em massa PENDENTE→VENCIDO quando a data passou.
+// Idempotente: rodar várias vezes no mesmo dia não afeta linhas extras.
+func (r *PgxMensalidadeRepository) MarcarVencidas(ctx context.Context) (int64, error) {
+	tag, err := r.queries.MarcarMensalidadesVencidas(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("MarcarMensalidadesVencidas: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // SaveBatch persiste múltiplas mensalidades novas em uma única transação.
 func (r *PgxMensalidadeRepository) SaveBatch(ctx context.Context, mensalidades []*financeiro.Mensalidade) error {
 	tx, err := r.pool.Begin(ctx)
