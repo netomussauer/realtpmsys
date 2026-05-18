@@ -23,11 +23,12 @@ spec:
   project: default
 
   source:
-    # Mirror interno do GitHub para o Gitea do lab (acesso sem internet).
-    # Para apontar direto para o GitHub público, trocar por:
+    # Service DNS interno do Gitea — o argocd-repo-server resolve via
+    # CoreDNS do cluster, não pelo Pi-hole. Owner = labadmin (padrão do lab,
+    # mesmo do amfit). Para apontar direto para o GitHub público, trocar por:
     #   https://github.com/netomussauer/realtpmsys.git
-    repoURL: "http://gitea.lab.local/lab/realtpmsys.git"
-    targetRevision: HEAD
+    repoURL: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/realtpmsys.git"
+    targetRevision: main
     path: "infra/k8s"
     directory:
       recurse: true
