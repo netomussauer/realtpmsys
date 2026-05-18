@@ -17,7 +17,7 @@ SELECT COUNT(*)
 FROM atletas
 WHERE deletado_em IS NULL
   AND ($1::text   IS NULL OR nome   ILIKE '%' || $1   || '%')
-  AND ($2::text IS NULL OR status = $2)
+  AND ($2::text IS NULL OR status::text = $2)
 `
 
 type CountAtletasParams struct {
@@ -99,7 +99,7 @@ SELECT id, nome, data_nascimento, cpf, rg, endereco, cidade, uf, cep, email, tel
 FROM atletas
 WHERE deletado_em IS NULL
   AND ($1::text   IS NULL OR nome   ILIKE '%' || $1   || '%')
-  AND ($2::text IS NULL OR status = $2)
+  AND ($2::text IS NULL OR status::text = $2)
 ORDER BY nome
 LIMIT  $4
 OFFSET $3

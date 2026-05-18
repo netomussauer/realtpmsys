@@ -15,7 +15,7 @@ LIMIT 1;
 SELECT *
 FROM matriculas
 WHERE turma_id = sqlc.arg(turma_id)
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status))
+  AND (sqlc.narg(status)::text IS NULL OR status::text = sqlc.narg(status))
 ORDER BY criado_em DESC
 LIMIT  sqlc.arg(lim)
 OFFSET sqlc.arg(off);
@@ -24,7 +24,7 @@ OFFSET sqlc.arg(off);
 SELECT COUNT(*)
 FROM matriculas
 WHERE turma_id = sqlc.arg(turma_id)
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status));
+  AND (sqlc.narg(status)::text IS NULL OR status::text = sqlc.narg(status));
 
 -- name: CountMatriculasAtivasPorTurma :one
 SELECT COUNT(*)

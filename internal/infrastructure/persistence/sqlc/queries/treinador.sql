@@ -21,7 +21,7 @@ SELECT *
 FROM treinadores
 WHERE deletado_em IS NULL
   AND (sqlc.narg(nome)::text   IS NULL OR nome   ILIKE '%' || sqlc.narg(nome)   || '%')
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status))
+  AND (sqlc.narg(status)::text IS NULL OR status::text = sqlc.narg(status))
 ORDER BY nome
 LIMIT  sqlc.arg(lim)
 OFFSET sqlc.arg(off);
@@ -31,7 +31,7 @@ SELECT COUNT(*)
 FROM treinadores
 WHERE deletado_em IS NULL
   AND (sqlc.narg(nome)::text   IS NULL OR nome   ILIKE '%' || sqlc.narg(nome)   || '%')
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status));
+  AND (sqlc.narg(status)::text IS NULL OR status::text = sqlc.narg(status));
 
 -- name: UpsertTreinador :one
 INSERT INTO treinadores (

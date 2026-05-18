@@ -14,7 +14,7 @@ WHERE contrato_id = $1
 SELECT *
 FROM mensalidades
 WHERE (sqlc.narg(atleta_id)::uuid   IS NULL OR atleta_id = sqlc.narg(atleta_id))
-  AND (sqlc.narg(status)::text      IS NULL OR status    = sqlc.narg(status))
+  AND (sqlc.narg(status)::text      IS NULL OR status::text = sqlc.narg(status))
   AND (sqlc.narg(comp_ano)::int     IS NULL OR competencia_ano = sqlc.narg(comp_ano))
   AND (sqlc.narg(comp_mes)::int     IS NULL OR competencia_mes = sqlc.narg(comp_mes))
 ORDER BY data_vencimento
@@ -25,7 +25,7 @@ OFFSET sqlc.arg(off);
 SELECT COUNT(*)
 FROM mensalidades
 WHERE (sqlc.narg(atleta_id)::uuid IS NULL OR atleta_id = sqlc.narg(atleta_id))
-  AND (sqlc.narg(status)::text    IS NULL OR status    = sqlc.narg(status))
+  AND (sqlc.narg(status)::text    IS NULL OR status::text = sqlc.narg(status))
   AND (sqlc.narg(comp_ano)::int   IS NULL OR competencia_ano = sqlc.narg(comp_ano))
   AND (sqlc.narg(comp_mes)::int   IS NULL OR competencia_mes = sqlc.narg(comp_mes));
 

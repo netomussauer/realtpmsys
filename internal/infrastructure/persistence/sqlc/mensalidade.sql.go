@@ -18,7 +18,7 @@ const countMensalidades = `-- name: CountMensalidades :one
 SELECT COUNT(*)
 FROM mensalidades
 WHERE ($1::uuid IS NULL OR atleta_id = $1)
-  AND ($2::text    IS NULL OR status    = $2)
+  AND ($2::text    IS NULL OR status::text = $2)
   AND ($3::int   IS NULL OR competencia_ano = $3)
   AND ($4::int   IS NULL OR competencia_mes = $4)
 `
@@ -165,7 +165,7 @@ const listMensalidades = `-- name: ListMensalidades :many
 SELECT id, contrato_id, atleta_id, competencia_ano, competencia_mes, data_vencimento, valor, valor_pago, status, data_pagamento, forma_pagamento, observacao, criado_em, atualizado_em
 FROM mensalidades
 WHERE ($1::uuid   IS NULL OR atleta_id = $1)
-  AND ($2::text      IS NULL OR status    = $2)
+  AND ($2::text      IS NULL OR status::text = $2)
   AND ($3::int     IS NULL OR competencia_ano = $3)
   AND ($4::int     IS NULL OR competencia_mes = $4)
 ORDER BY data_vencimento

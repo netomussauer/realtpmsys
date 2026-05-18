@@ -30,7 +30,7 @@ const countMatriculasPorTurma = `-- name: CountMatriculasPorTurma :one
 SELECT COUNT(*)
 FROM matriculas
 WHERE turma_id = $1
-  AND ($2::text IS NULL OR status = $2)
+  AND ($2::text IS NULL OR status::text = $2)
 `
 
 type CountMatriculasPorTurmaParams struct {
@@ -101,7 +101,7 @@ const listMatriculasPorTurma = `-- name: ListMatriculasPorTurma :many
 SELECT id, atleta_id, turma_id, data_inicio, data_fim, status, criado_em, atualizado_em
 FROM matriculas
 WHERE turma_id = $1
-  AND ($2::text IS NULL OR status = $2)
+  AND ($2::text IS NULL OR status::text = $2)
 ORDER BY criado_em DESC
 LIMIT  $4
 OFFSET $3

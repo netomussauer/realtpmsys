@@ -17,7 +17,7 @@ SELECT COUNT(*)
 FROM turmas
 WHERE deletado_em IS NULL
   AND ($1::text   IS NULL OR nome   ILIKE '%' || $1   || '%')
-  AND ($2::text IS NULL OR status = $2)
+  AND ($2::text IS NULL OR status::text = $2)
 `
 
 type CountTurmasParams struct {
@@ -129,7 +129,7 @@ SELECT id, nome, faixa_etaria_min, faixa_etaria_max, capacidade_max, treinador_i
 FROM turmas
 WHERE deletado_em IS NULL
   AND ($1::text   IS NULL OR nome   ILIKE '%' || $1   || '%')
-  AND ($2::text IS NULL OR status = $2)
+  AND ($2::text IS NULL OR status::text = $2)
 ORDER BY nome
 LIMIT  $4
 OFFSET $3
