@@ -154,15 +154,35 @@ make run
 ## Testes
 
 ```bash
-# Unitários — domínio puro, sem banco (~rápido)
+# Unitários — domínio + application, sem banco (~rápido)
 make test/unit
 
-# Integração — requer DB_URL_TEST configurado
-make test/integration
-
-# Todos com cobertura
+# Tudo + relatório de cobertura (HTML em coverage.html)
 make test/coverage
+
+# Com race detector (requer CGO_ENABLED=1)
+make test/race
+
+# Integração — requer DB_URL_TEST e -tags integration
+make test/integration
 ```
+
+### Cobertura atual (domínio + application/relatorio)
+
+| Pacote | Cobertura |
+|---|---|
+| `internal/domain/atleta` | **100%** |
+| `internal/domain/campo` | **100%** |
+| `internal/domain/financeiro` | **100%** |
+| `internal/domain/frequencia` | **100%** |
+| `internal/domain/treinador` | **100%** |
+| `internal/domain/turma` | **100%** |
+| `internal/application/relatorio` | **100%** |
+
+Estratégia: table-driven tests cobrindo regras de negócio puras (máquinas
+de estado, validações, cálculo de idade, taxa de presença, datas de
+vencimento em borda — fevereiro bissexto, abril com 30 dias). Sem mocks
+de banco — repositories ficam para testes de integração quando vierem.
 
 ---
 

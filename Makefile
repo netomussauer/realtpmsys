@@ -14,18 +14,25 @@ build:
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BUILD_DIR)/$(APP_NAME) ./cmd/api/...
 
 # ── Qualidade ─────────────────────────────────────────────────────────────────
+# Sem -race por padrão: requer CGO_ENABLED=1 e o ambiente WSL não tem libc dev.
+# Para rodar com -race localmente: `make test/race`.
 test:
-	go test ./... -race -count=1
+	go test ./... -count=1
+
+test/race:
+	CGO_ENABLED=1 go test ./... -race -count=1
 
 test/unit:
-	go test ./internal/domain/... ./internal/application/... -race -count=1 -v
+	go test ./internal/domain/... ./internal/application/... -count=1 -v
 
 test/integration:
-	DB_URL=$(DB_URL_TEST) go test ./internal/infrastructure/... -race -count=1 -v -tags integration
+	DB_URL=$(DB_URL_TEST) go test ./internal/infrastructure/... -count=1 -v -tags integration
 
 test/coverage:
-	go test ./... -race -coverprofile=coverage.out
+	go test ./... -count=1 -coverprofile=coverage.out
+	go tool cover -func=coverage.out | tail -1
 	go tool cover -html=coverage.out -o coverage.html
+	@echo "HTML em coverage.html"
 
 lint:
 	golangci-lint run ./...
