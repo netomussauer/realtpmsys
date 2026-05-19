@@ -122,7 +122,9 @@ make run
 
 > **Estado atual da API:**
 >
-> - **Públicos:** `/health`, `POST /auth/login` (retorna `access_token` Bearer)
+> - **Públicos:** `/health`, `POST /auth/login` (retorna par `access_token` + `refresh_token`),
+>   `POST /auth/refresh` (consome `refresh_token` e devolve novo `access_token`;
+>   refresh **não rotaciona** — vide [docs/openapi.yaml](docs/openapi.yaml))
 > - **Atletas:** CRUD completo em `/api/v1/atletas` (List/Get ADMIN+TREINADOR,
 >   escrita ADMIN). Inclui `PATCH /{id}/inativar`, `/suspender`, `/reativar`.
 > - **Treinadores:** CRUD em `/api/v1/treinadores` (List/Get ADMIN+TREINADOR,
@@ -178,11 +180,15 @@ make test/integration
 | `internal/domain/treinador` | **100%** |
 | `internal/domain/turma` | **100%** |
 | `internal/application/relatorio` | **100%** |
+| `internal/application/identidade` | **fluxos Login + Refresh + emissão de token** |
+| `internal/infrastructure/http/middleware` | **Audit (níveis + captura de user_id) + Auth** |
 
 Estratégia: table-driven tests cobrindo regras de negócio puras (máquinas
 de estado, validações, cálculo de idade, taxa de presença, datas de
-vencimento em borda — fevereiro bissexto, abril com 30 dias). Sem mocks
-de banco — repositories ficam para testes de integração quando vierem.
+vencimento em borda — fevereiro bissexto, abril com 30 dias) e fakes para
+ports (`identidade.Repository`) nos casos de uso. Middleware testado via
+`httptest.Server` com asserts sobre o JSON emitido pelo `slog`. Sem mocks
+de banco real — repositories ficam para testes de integração quando vierem.
 
 ---
 
@@ -227,7 +233,9 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] `ContratoHandler` — endpoint `POST /api/v1/contratos` (ADMIN)
 - [x] `MensalidadeHandler` com respostas RFC 7807 — endpoints completos
 - [x] Service + `RelatorioHandler` — inadimplência + frequência por atleta + frequência consolidada por turma (com taxa de presença)
-- [x] Middleware JWT (`Auth` + `RequirePerfil`) ativo em `/api/v1/*`
+- [x] Middleware JWT (`Auth` + `RequirePerfil`) ativo em `/api/v1/*` — rejeita refresh token em rotas protegidas via claim `typ`
+- [x] **Refresh token**: `LoginUseCase` emite par access+refresh com claim `typ`; `RefreshTokenUseCase` valida `typ=refresh`, releitura do usuário e devolve novo access (sem rotacionar refresh)
+- [x] **Middleware `Audit`**: log JSON estruturado por request (method, path, status, latency_ms, bytes, ip, request_id, user_id, perfil) — substitui o `chimiddleware.Logger` text-based; pula `/health`; severidade `info/warn/error` conforme status
 - [x] Cron jobs do contexto Financeiro: `GerarMensalidades` mensal (`0 6 1 * *`) e `MarcarMensalidadesVencidas` diário (`0 1 * * *`)
 - [x] Migrations golang-migrate (`000001_initial_schema`, `000002_admin_password`)
 - [x] `config.go` — leitura validada de variáveis de ambiente
@@ -242,10 +250,8 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
   pagamento → relatório de inadimplência
 - [x] Deploy + CI/CD documentados em [infra/README.md](infra/README.md)
 - [x] **Responsavel + Uniforme** (sub-entidades de Atleta): CRUD em `/api/v1/atletas/{id}/responsaveis`, `/responsaveis/{id}`, `PUT/GET /api/v1/atletas/{id}/uniforme`. Regra `contato_principal` única por atleta via swap em transação.
-- [ ] Endpoint `POST /auth/refresh` (config `JWT_REFRESH_EXPIRES_DAYS` existe, falta handler)
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
 - [ ] ArgoCD Image Updater (bump automático do Deployment quando nova tag chega)
-- [ ] Testes (zero arquivos `*_test.go` no momento)
 - [ ] Frontend Next.js — [docs/frontend-architecture.md](docs/frontend-architecture.md) é só plano
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.

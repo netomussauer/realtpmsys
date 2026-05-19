@@ -2,6 +2,7 @@
 package http
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -26,12 +27,14 @@ type Handlers struct {
 }
 
 // NewRouter constrói o router com todas as rotas e middlewares registrados.
-func NewRouter(jwtSecret string, h Handlers) http.Handler {
+// O logger é usado pelo middleware Audit para emitir um JSON estruturado por
+// request (substitui o `middleware.Logger` text-based padrão do chi).
+func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
+	r.Use(middleware.Audit(logger))
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.StripSlashes)
 
@@ -45,6 +48,7 @@ func NewRouter(jwtSecret string, h Handlers) http.Handler {
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/login", h.Auth.Login)
+		r.Post("/refresh", h.Auth.Refresh)
 	})
 
 	// ── API v1 (JWT obrigatório) ─────────────────────────────────────────────

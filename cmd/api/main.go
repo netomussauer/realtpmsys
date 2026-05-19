@@ -107,7 +107,8 @@ func run(logger *slog.Logger) error {
 	firmarContrato := appfinanceiro.NewFirmarContratoUseCase(contratoRepo, planoRepo)
 
 	// Use Cases — Identidade
-	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
+	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
+	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
 
 	// Use Cases — Atletas (+ Responsavel + Uniforme)
 	cadastrarAtleta := appatleta.NewCadastrarAtletaUseCase(atletaRepo)
@@ -146,7 +147,7 @@ func run(logger *slog.Logger) error {
 
 	// Handlers
 	handlers := infrahttp.Handlers{
-		Auth:        handler.NewAuthHandler(loginUseCase),
+		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
 		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo),
 		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),
@@ -165,7 +166,7 @@ func run(logger *slog.Logger) error {
 	scheduler.Start()
 	defer scheduler.Stop()
 
-	router := infrahttp.NewRouter(cfg.JWT.Secret, handlers)
+	router := infrahttp.NewRouter(cfg.JWT.Secret, logger, handlers)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Server.Port,

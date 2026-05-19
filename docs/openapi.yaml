@@ -84,10 +84,22 @@ components:
     TokenResponse:
       type: object
       properties:
-        access_token:  { type: string }
-        refresh_token: { type: string }
-        token_type:    { type: string, example: "bearer" }
-        expires_in:    { type: integer, example: 3600 }
+        access_token:        { type: string, description: "JWT HS256 com claim `typ=access`. Usar em `Authorization: Bearer <token>` nas rotas /api/v1/*." }
+        refresh_token:       { type: string, description: "JWT HS256 com claim `typ=refresh`. Usado apenas em POST /auth/refresh." }
+        token_type:          { type: string, example: "Bearer" }
+        expires_at:          { type: string, format: date-time, description: "Expiração do access_token (UTC)." }
+        refresh_expires_at:  { type: string, format: date-time, description: "Expiração do refresh_token (UTC)." }
+        user_id:             { type: string, format: uuid }
+        perfil:              { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        access_token: { type: string, description: "Novo JWT `typ=access`. O refresh_token original NÃO rotaciona — continua válido até `refresh_expires_at` original." }
+        token_type:   { type: string, example: "Bearer" }
+        expires_at:   { type: string, format: date-time }
+        user_id:      { type: string, format: uuid }
+        perfil:       { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
 
     # ---- Atleta --------------------------------------------------------------
     AtletaRequest:
@@ -461,12 +473,17 @@ paths:
   /auth/refresh:
     post:
       tags: [Autenticação]
-      x-status: not-implemented
+      summary: Renova access token usando refresh token
+      security: []
       description: |
-        🚧 **Não implementado.** Config `JWT_REFRESH_EXPIRES_DAYS` existe no
-        backend mas o handler de refresh ainda não foi escrito. Solicite novo
-        login enquanto isso.
-      summary: Renova access token via refresh token
+        Aceita um refresh token (`typ=refresh`) emitido por `/auth/login` e
+        devolve um novo access token. O refresh token **não rotaciona** —
+        permanece válido até a data original em `refresh_expires_at`.
+
+        Rejeições retornam **401**:
+        - refresh_token vazio, malformado ou com assinatura inválida
+        - typ ≠ refresh (impede uso de access token aqui)
+        - usuário do token foi removido ou está inativo
       requestBody:
         required: true
         content:
@@ -481,7 +498,12 @@ paths:
           description: Token renovado
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/TokenResponse" }
+              schema: { $ref: "#/components/schemas/RefreshTokenResponse" }
+        "400":
+          description: refresh_token ausente ou payload inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
         "401":
           description: Refresh token inválido ou expirado
           content:

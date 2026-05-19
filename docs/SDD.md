@@ -1,10 +1,22 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.1.0
+**Versão:** 2.2.0
 **Data:** 2026-05-19
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.1.0 (2026-05-19, manhã):**
+>
+> - **Refresh token implementado** — `LoginUseCase` emite par `access` + `refresh`
+>   com claim `typ`; `RefreshTokenUseCase` valida `typ=refresh` e devolve novo
+>   access sem rotacionar refresh. Middleware `Auth` rejeita refresh em rotas
+>   `/api/v1/*` (defesa em profundidade).
+> - **Middleware `Audit`** substitui o `chimiddleware.Logger` text-based:
+>   um JSON estruturado por request com `request_id`, `user_id`, `perfil`,
+>   `latency_ms`, `status` e severidade derivada do status (info/warn/error).
+> - Cobertura de testes expandida: `application/identidade` (Login/Refresh +
+>   helper de emissão) e `http/middleware` (Audit ↔ Auth integration).
+>
 > **Mudanças vs v2.0.0 (2026-04-15):**
 >
 > - Stack Go: 1.22 → 1.24 (golang-migrate 4.19+ exige Go 1.24)
@@ -362,8 +374,8 @@ Endpoints **implementados** no MVP. Marcador 🚧 = previsto mas ainda não impl
 | Método | Path | Autenticação | Descrição |
 |---|---|---|---|
 | GET | `/health` | Público | Healthcheck (sem auth) |
-| POST | `/auth/login` | Público | Gera JWT HS256 (60min) |
-| POST | `/auth/refresh` | Bearer | 🚧 Renova token (config existe, falta handler) |
+| POST | `/auth/login` | Público | Gera par JWT HS256 — `access` (60min) + `refresh` (7 dias por padrão) |
+| POST | `/auth/refresh` | Refresh token no body | Renova `access_token`; **não rotaciona** o refresh |
 | GET | `/api/v1/atletas?nome=&status=&page=&per_page=` | ADMIN, TREINADOR | Lista paginada |
 | POST | `/api/v1/atletas` | ADMIN | Cadastra atleta |
 | GET | `/api/v1/atletas/{id}` | ADMIN, TREINADOR | Detalhe |
@@ -565,19 +577,40 @@ realtpmsys/
 ### 5.2 Observabilidade — Three Pillars
 
 #### Logs (JSON estruturado)
+
+Implementado via `slog` (handler JSON, stdout) + middleware `Audit`. Cada
+request gera uma linha — exceto `/health` (alto ruído, baixo sinal).
+
 ```json
 {
-  "timestamp": "2026-04-14T10:30:00Z",
+  "time": "2026-05-19T14:23:11Z",
   "level": "INFO",
-  "service": "realtpmsys",
-  "trace_id": "abc123",
-  "span_id": "def456",
-  "event": "pagamento_registrado",
-  "atleta_id": "uuid...",
-  "mensalidade_id": "uuid...",
-  "valor": 150.00
+  "msg": "http",
+  "method": "POST",
+  "path": "/api/v1/mensalidades/{id}/pagar",
+  "status": 200,
+  "latency_ms": 87,
+  "bytes": 412,
+  "ip": "192.168.1.10",
+  "request_id": "k3s-server/abc123-000042",
+  "user_id": "1f2…",
+  "perfil": "ADMIN"
 }
 ```
+
+Notas operacionais:
+
+- O nível do log deriva do status: `>=500 → ERROR`, `>=400 → WARN`, demais `INFO`.
+  Permite roteamento simples no Loki (label `level=error` para alertas).
+- `request_id` é injetado por `chimiddleware.RequestID`, lido pelo `Audit`.
+- `user_id`/`perfil` chegam ao `Audit` via *holder mutável* injetado no
+  contexto — o middleware `Auth` escreve no holder durante a fase
+  descendente, antes do handler. Isso contorna a limitação do
+  `http.Request.WithContext` (que produz um novo `*Request`, invisível ao
+  defer do Audit).
+- Eventos de domínio (ex.: `pagamento_registrado`, falhas de job mensal)
+  continuam sendo logados explicitamente nos use cases — o `Audit` cuida
+  apenas do envelope HTTP.
 
 #### Métricas RED por endpoint
 | Endpoint | Rate | Errors | Duration SLO |

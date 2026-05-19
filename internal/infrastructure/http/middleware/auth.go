@@ -13,18 +13,22 @@ import (
 type contextKey string
 
 const (
-	ContextKeyUserID  contextKey = "user_id"
-	ContextKeyPerfil  contextKey = "perfil"
+	ContextKeyUserID contextKey = "user_id"
+	ContextKeyPerfil contextKey = "perfil"
 )
 
-// Claims define o payload do JWT.
+// Claims define o payload do JWT. O campo Typ distingue access de refresh —
+// só access pode acessar rotas /api/v1/*; refresh é aceito apenas em /auth/refresh.
 type Claims struct {
 	UserID string `json:"user_id"`
 	Perfil string `json:"perfil"`
+	Typ    string `json:"typ,omitempty"`
 	jwt.RegisteredClaims
 }
 
-// Auth valida o Bearer token JWT e injeta claims no contexto.
+// Auth valida o Bearer access token JWT e injeta claims no contexto.
+// Rejeita tokens com claim typ != "access" (refresh tokens não podem ser
+// usados para autorizar chamadas a APIs protegidas).
 func Auth(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,8 +56,27 @@ func Auth(secret string) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Tokens emitidos antes do refresh existir não têm claim `typ` —
+			// aceitar como access por compatibilidade. Novos tokens sempre
+			// trazem typ; refresh é rejeitado em rotas protegidas.
+			if claims.Typ != "" && claims.Typ != "access" {
+				response.WriteJSON(w, http.StatusUnauthorized, map[string]string{
+					"error": "tipo de token inválido — use o access token, não o refresh",
+				})
+				return
+			}
+
 			ctx := context.WithValue(r.Context(), ContextKeyUserID, claims.UserID)
 			ctx = context.WithValue(ctx, ContextKeyPerfil, claims.Perfil)
+
+			// Se houver holder do Audit, enriquece o log com user_id/perfil.
+			// `Audit` cria um novo *http.Request via WithContext e seu defer
+			// não enxergaria o contexto modificado aqui sem este ponteiro.
+			if info := auditAttrsFromContext(ctx); info != nil {
+				info.UserID = claims.UserID
+				info.Perfil = claims.Perfil
+			}
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
