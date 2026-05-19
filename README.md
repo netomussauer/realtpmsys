@@ -241,7 +241,7 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] **Smoke test E2E validado** em produção lab: atleta → contrato → mensalidade →
   pagamento → relatório de inadimplência
 - [x] Deploy + CI/CD documentados em [infra/README.md](infra/README.md)
-- [ ] Repositórios + handlers: Responsavel, Uniforme (sub-entidades de Atleta — schema já existe)
+- [x] **Responsavel + Uniforme** (sub-entidades de Atleta): CRUD em `/api/v1/atletas/{id}/responsaveis`, `/responsaveis/{id}`, `PUT/GET /api/v1/atletas/{id}/uniforme`. Regra `contato_principal` única por atleta via swap em transação.
 - [ ] Endpoint `POST /auth/refresh` (config `JWT_REFRESH_EXPIRES_DAYS` existe, falta handler)
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
 - [ ] ArgoCD Image Updater (bump automático do Deployment quando nova tag chega)

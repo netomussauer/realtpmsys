@@ -136,16 +136,117 @@ type Responsavel struct {
 	Telefone         string
 	Parentesco       Parentesco
 	ContatoPrincipal bool
-	CriadoEm        time.Time
-	AtualizadoEm    time.Time
+	CriadoEm         time.Time
+	AtualizadoEm     time.Time
 }
 
+// IsValidParentesco retorna true se p está entre os valores aceitos.
+func IsValidParentesco(p Parentesco) bool {
+	switch p {
+	case ParentescoPai, ParentescoMae, ParentescoAvo, ParentescoOutro:
+		return true
+	}
+	return false
+}
+
+// NewResponsavel cria um Responsavel validado.
+// telefone é obrigatório (NOT NULL no schema); CPF e email opcionais.
+func NewResponsavel(atletaID uuid.UUID, nome, telefone string, parentesco Parentesco) (*Responsavel, error) {
+	if atletaID == uuid.Nil {
+		return nil, shared.Newf(shared.ErrDomainViolation, "atleta_id é obrigatório")
+	}
+	if nome == "" {
+		return nil, shared.ErrNomeObrigatorio
+	}
+	if telefone == "" {
+		return nil, shared.Newf(shared.ErrDomainViolation, "telefone do responsável é obrigatório")
+	}
+	if !IsValidParentesco(parentesco) {
+		return nil, shared.Newf(shared.ErrDomainViolation, "parentesco inválido: "+string(parentesco))
+	}
+	now := time.Now().UTC()
+	return &Responsavel{
+		ID:           uuid.New(),
+		AtletaID:     atletaID,
+		Nome:         nome,
+		Telefone:     telefone,
+		Parentesco:   parentesco,
+		CriadoEm:     now,
+		AtualizadoEm: now,
+	}, nil
+}
+
+// SetCPF valida 11 dígitos numéricos.
+func (r *Responsavel) SetCPF(cpf string) error {
+	if len(cpf) != 11 {
+		return shared.ErrCPFInvalido
+	}
+	for _, ru := range cpf {
+		if !unicode.IsDigit(ru) {
+			return shared.ErrCPFInvalido
+		}
+	}
+	r.CPF = &cpf
+	return nil
+}
+
+// MarcarComoPrincipal define este responsável como contato principal.
+// A unicidade por atleta é garantida no DB via unique index parcial; o use
+// case deve despromover o principal anterior numa transação antes de chamar.
+func (r *Responsavel) MarcarComoPrincipal() {
+	r.ContatoPrincipal = true
+	r.AtualizadoEm = time.Now().UTC()
+}
+
+// Despromover remove o flag de contato principal.
+func (r *Responsavel) Despromover() {
+	r.ContatoPrincipal = false
+	r.AtualizadoEm = time.Now().UTC()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Uniforme armazena os tamanhos de uniforme do atleta.
+// Cada atleta tem no máximo um Uniforme (constraint unique no DB).
 type Uniforme struct {
-	ID          uuid.UUID
-	AtletaID    uuid.UUID
-	TamCamisa   string
-	TamShort    string
-	TamChuteira string
+	ID           uuid.UUID
+	AtletaID     uuid.UUID
+	TamCamisa    string
+	TamShort     string
+	TamChuteira  string
 	AtualizadoEm time.Time
+}
+
+// NewUniforme cria um Uniforme validado. Todos os tamanhos são obrigatórios
+// (NOT NULL no schema) e devem ser strings não-vazias.
+func NewUniforme(atletaID uuid.UUID, tamCamisa, tamShort, tamChuteira string) (*Uniforme, error) {
+	if atletaID == uuid.Nil {
+		return nil, shared.Newf(shared.ErrDomainViolation, "atleta_id é obrigatório")
+	}
+	if tamCamisa == "" || tamShort == "" || tamChuteira == "" {
+		return nil, shared.Newf(shared.ErrDomainViolation,
+			"tam_camisa, tam_short e tam_chuteira são obrigatórios")
+	}
+	return &Uniforme{
+		ID:           uuid.New(),
+		AtletaID:     atletaID,
+		TamCamisa:    tamCamisa,
+		TamShort:     tamShort,
+		TamChuteira:  tamChuteira,
+		AtualizadoEm: time.Now().UTC(),
+	}, nil
+}
+
+// AtualizarTamanhos substitui os 3 tamanhos numa única operação,
+// preservando ID/AtletaID. Bumpa AtualizadoEm.
+func (u *Uniforme) AtualizarTamanhos(camisa, short, chuteira string) error {
+	if camisa == "" || short == "" || chuteira == "" {
+		return shared.Newf(shared.ErrDomainViolation,
+			"tam_camisa, tam_short e tam_chuteira são obrigatórios")
+	}
+	u.TamCamisa = camisa
+	u.TamShort = short
+	u.TamChuteira = chuteira
+	u.AtualizadoEm = time.Now().UTC()
+	return nil
 }

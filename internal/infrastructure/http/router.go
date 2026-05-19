@@ -15,6 +15,7 @@ import (
 type Handlers struct {
 	Auth        *handler.AuthHandler
 	Atleta      *handler.AtletaHandler
+	Responsavel *handler.ResponsavelHandler
 	Treinador   *handler.TreinadorHandler
 	Campo       *handler.CampoHandler
 	Turma       *handler.TurmaHandler
@@ -57,6 +58,8 @@ func NewRouter(jwtSecret string, h Handlers) http.Handler {
 				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR"))
 				r.Get("/", h.Atleta.List)
 				r.Get("/{id}", h.Atleta.GetByID)
+				r.Get("/{id}/responsaveis", h.Responsavel.ListPorAtleta)
+				r.Get("/{id}/uniforme", h.Responsavel.GetUniforme)
 			})
 			// Escritas restritas a ADMIN
 			r.Group(func(r chi.Router) {
@@ -67,7 +70,16 @@ func NewRouter(jwtSecret string, h Handlers) http.Handler {
 				r.Patch("/{id}/inativar", h.Atleta.Inativar)
 				r.Patch("/{id}/suspender", h.Atleta.Suspender)
 				r.Patch("/{id}/reativar", h.Atleta.Reativar)
+				r.Post("/{id}/responsaveis", h.Responsavel.Adicionar)
+				r.Put("/{id}/uniforme", h.Responsavel.SetUniforme)
 			})
+		})
+
+		// Responsáveis — endpoints avulsos (atualiza/remove por ID)
+		r.Route("/responsaveis", func(r chi.Router) {
+			r.Use(middleware.RequirePerfil("ADMIN"))
+			r.Put("/{id}", h.Responsavel.Atualizar)
+			r.Delete("/{id}", h.Responsavel.Remover)
 		})
 
 		// Treinadores

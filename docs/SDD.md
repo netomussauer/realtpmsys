@@ -370,7 +370,12 @@ Endpoints **implementados** no MVP. Marcador 🚧 = previsto mas ainda não impl
 | PUT | `/api/v1/atletas/{id}` | ADMIN | Atualiza |
 | DELETE | `/api/v1/atletas/{id}` | ADMIN | Soft delete |
 | PATCH | `/api/v1/atletas/{id}/inativar` \| `/suspender` \| `/reativar` | ADMIN | Transições de status |
-| POST | `/api/v1/atletas/{id}/responsaveis` | ADMIN | 🚧 Adiciona responsável |
+| POST | `/api/v1/atletas/{id}/responsaveis` | ADMIN | Adiciona responsável (swap se principal) |
+| GET | `/api/v1/atletas/{id}/responsaveis` | ADMIN, TREINADOR | Lista responsáveis do atleta |
+| PUT | `/api/v1/responsaveis/{id}` | ADMIN | Atualiza responsável |
+| DELETE | `/api/v1/responsaveis/{id}` | ADMIN | Remove responsável (hard delete) |
+| PUT | `/api/v1/atletas/{id}/uniforme` | ADMIN | Upsert uniforme (1:1 atleta) |
+| GET | `/api/v1/atletas/{id}/uniforme` | ADMIN, TREINADOR | Obtém uniforme do atleta |
 | GET | `/api/v1/treinadores?nome=&status=&page=&per_page=` | ADMIN, TREINADOR | Lista |
 | POST | `/api/v1/treinadores` | ADMIN | Cadastra (exige `usuario_id`) |
 | GET | `/api/v1/treinadores/{id}` | ADMIN, TREINADOR | Detalhe |

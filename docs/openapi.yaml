@@ -599,9 +599,27 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      tags: [Atletas]
+      summary: Lista responsáveis do atleta
+      description: Ordena por contato_principal DESC, depois criado_em.
+      responses:
+        "200":
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ResponsavelResponse" }
     post:
       tags: [Atletas]
       summary: Adiciona responsável ao atleta
+      description: |
+        Se `contato_principal: true`, despromove o principal atual do atleta na
+        mesma transação (constraint unique parcial uq_responsavel_principal_por_atleta).
       requestBody:
         required: true
         content:
@@ -613,8 +631,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ResponsavelResponse" }
+        "404": { description: atleta não encontrado }
+        "409": { description: CPF já cadastrado em outro responsável }
 
-  /atletas/{id}/uniforme:
+  /responsaveis/{id}:
     parameters:
       - name: id
         in: path
@@ -622,7 +642,46 @@ paths:
         schema: { type: string, format: uuid }
     put:
       tags: [Atletas]
-      summary: Atualiza uniforme do atleta (cria se não existir)
+      summary: Atualiza responsável
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResponsavelRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResponsavelResponse" }
+        "404": { description: Não encontrado }
+    delete:
+      tags: [Atletas]
+      summary: Remove responsável (hard delete)
+      responses:
+        "204": { description: Removido }
+        "404": { description: Não encontrado }
+
+  /atletas/{id}/uniforme:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Atletas]
+      summary: Obtém uniforme do atleta
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UniformeResponse" }
+        "404": { description: Atleta sem uniforme cadastrado }
+    put:
+      tags: [Atletas]
+      summary: Upsert do uniforme (1:1 com atleta)
+      description: Constraint uq_uniformes_atleta — segunda chamada atualiza, não duplica.
       requestBody:
         required: true
         content:
@@ -1034,6 +1093,7 @@ paths:
   # ver código em internal/infrastructure/http/handler/ para campos completos.
 
   # ---- Atletas — transições de status (v1.1) --------------------------------
+  # (Sub-recursos Responsavel + Uniforme já estão consolidados em §/atletas/{id}/*)
 
   /atletas/{id}/inativar:
     parameters:
