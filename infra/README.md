@@ -129,3 +129,5 @@ MetalLB. Conferir `kubectl logs -n metallb-system speaker-*`.
 
 **DNS não resolve** → testar direto pelo IP: `curl http://192.168.1.208:8000/health`.
 Se OK, o problema está no Pi-hole (passo 4).
+
+<!-- pipeline trigger: 2026-05-19T15:16:48Z -->
