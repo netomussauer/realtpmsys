@@ -112,6 +112,11 @@ spec:
           - name: docker-credentials
             secret:
               secretName: harbor-push-realtpmsys
+              # Renomeia .dockerconfigjson → config.json para Kaniko
+              # ler via DOCKER_CONFIG=/kaniko/.docker.
+              items:
+                - key: .dockerconfigjson
+                  path: config.json
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: Trigger

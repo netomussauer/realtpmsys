@@ -4,9 +4,10 @@
 #   git-clone (shallow do Gitea mirror)
 #   → kaniko-build-push (Dockerfile da raiz → harbor.lab.local/realtpmsys/api)
 #
-# Tasks reutilizadas (já existem em cicd, compartilhadas com outras pipelines):
-#   - amfit-git-clone     → cópia debian-based (musl getaddrinfo bug fix)
-#   - kaniko-build-push   → genérica, faz push de :tag + :latest e expõe digest
+# Tasks usadas:
+#   - amfit-git-clone           → reutilizada do ns cicd (debian-based)
+#   - realtpmsys-kaniko-build-push → local (corrige bug do secret hardcoded
+#                                    na task kaniko-build-push genérica)
 #
 # Falha fast: qualquer task com erro aborta o pipeline.
 ---
@@ -70,7 +71,7 @@ spec:
     - name: kaniko-build-push
       taskRef:
         kind: Task
-        name: kaniko-build-push
+        name: realtpmsys-kaniko-build-push   # task local — usa workspace docker-credentials
       runAfter: ["git-clone"]
       params:
         - name: image

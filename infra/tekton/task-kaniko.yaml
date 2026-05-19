@@ -1,0 +1,71 @@
+# Task Kaniko específica do realtpmsys.
+#
+# Diferença para a task genérica `kaniko-build-push` no ns cicd:
+#   - Aquela usa Volume projected com `secret.name: harbor-registry-secret`
+#     hardcoded (que contém somente robot$amfit+tekton-pusher, sem acesso
+#     a realtpmsys/*).
+#   - Esta usa o workspace `docker-credentials` declarado no Pipeline,
+#     respeitando o secret passado pelo TriggerTemplate (harbor-push-realtpmsys).
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: realtpmsys-kaniko-build-push
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "task"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-tekton"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Kaniko build + push.
+    Lê config.json do workspace docker-credentials (Secret dockerconfigjson
+    montado pelo TriggerTemplate / PipelineRun).
+  params:
+    - name: image
+      type: string
+      description: Repositório da imagem (ex: harbor.lab.local/realtpmsys/api)
+    - name: tag
+      type: string
+      default: "latest"
+    - name: dockerfile
+      type: string
+      default: "Dockerfile"
+    - name: context
+      type: string
+      default: "."
+  results:
+    - name: image-digest
+      description: Digest SHA da imagem construída
+  workspaces:
+    - name: source
+      description: Workspace com o código-fonte
+    - name: docker-credentials
+      description: Workspace com Secret dockerconfigjson (montado como /kaniko/.docker/config.json)
+      mountPath: /kaniko/.docker
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:v1.23.2
+      env:
+        - name: DOCKER_CONFIG
+          value: /kaniko/.docker
+      computeResources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "2Gi"
+      args:
+        - "--dockerfile=$(params.dockerfile)"
+        - "--context=dir://$(workspaces.source.path)/$(params.context)"
+        - "--destination=$(params.image):$(params.tag)"
+        - "--destination=$(params.image):latest"
+        - "--skip-tls-verify-registry=harbor.lab.local"
+        - "--cache=false"
+        - "--digest-file=$(results.image-digest.path)"
+        - "--verbosity=info"
