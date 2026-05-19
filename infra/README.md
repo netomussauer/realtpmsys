@@ -17,14 +17,102 @@ Manifestos e fluxo de deploy do realtpmsys no cluster K3s do `infra-lab`.
 
 ```text
 infra/
-├── k8s/                          # aplicado pelo ArgoCD (path da Application)
-│   ├── namespace.yaml            # ns realtpmsys com labels do lab
-│   ├── deployment.yaml           # 1 réplica, distroless, probes em /health
-│   ├── service.yaml              # LoadBalancer MetalLB
-│   └── sealedsecret.yaml.example # template — gerar o real com kubeseal
+├── k8s/                              # ns realtpmsys
+│   ├── namespace.yaml
+│   ├── deployment.yaml               # 1 réplica, distroless, probes em /health
+│   ├── service.yaml                  # LoadBalancer MetalLB 192.168.1.208
+│   └── sealedsecret.yaml             # PG_PASSWORD + JWT_SECRET (selados)
+├── tekton/                           # ns cicd — pipeline de build
+│   ├── serviceaccount.yaml           # tekton-realtpmsys + RBAC namespaced + cluster
+│   ├── pipeline.yaml                 # git-clone -> realtpmsys-kaniko-build-push
+│   ├── task-kaniko.yaml              # Kaniko local (workspace docker-credentials)
+│   ├── triggers.yaml                 # TriggerBinding + Template + Trigger + EventListener
+│   └── sealedsecret-webhook.yaml     # HMAC do webhook Gitea (selado)
 └── argocd/
-    └── application.yaml          # Application apontando para o repo
+    ├── application.yaml              # Application principal (infra/k8s -> ns realtpmsys)
+    └── application-tekton.yaml       # Application secundária (infra/tekton -> ns cicd)
 ```
+
+## CI/CD via Tekton
+
+A imagem `harbor.lab.local/realtpmsys/api` é buildada por uma Pipeline Tekton
+no ns `cicd`. Stages:
+
+```text
+git-clone (amfit-git-clone reutilizada)
+  → realtpmsys-kaniko-build-push
+    → publica :latest + :sha-<7chars> no Harbor
+```
+
+### Acionar a pipeline
+
+**1) Via push real ao Gitea** (preferencial):
+
+```bash
+# Se o repo for source-of-truth, qualquer push em main dispara o webhook.
+# Como aqui o repo é mirror PULL do GitHub, o mirror-sync não dispara webhook
+# nativamente. Workaround: forçar mirror-sync via API e em seguida invocar
+# o EventListener manualmente (script abaixo) — ou migrar para fluxo
+# Gitea-primary com mirror push reverso pro GitHub.
+```
+
+**2) Manualmente via `kubectl create`** (PipelineRun ad-hoc):
+
+```bash
+COMMIT=$(git rev-parse --short HEAD)
+cat <<YAML | kubectl create -f -
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: realtpmsys-build-manual-
+  namespace: cicd
+  labels:
+    trigger: manual
+    git-revision-short: "$COMMIT"
+spec:
+  pipelineRef: { name: realtpmsys-build-api }
+  taskRunTemplate:
+    serviceAccountName: tekton-realtpmsys
+    podTemplate:
+      nodeSelector: { workload: cicd }
+      securityContext: { fsGroup: 65532 }
+  params: [{ name: image-tag, value: "sha-$COMMIT" }]
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: "5Gi" } }
+        storageClassName: local-path
+  - name: docker-credentials
+    secret:
+      secretName: harbor-push-realtpmsys
+      items: [{ key: .dockerconfigjson, path: config.json }]
+YAML
+```
+
+**3) Simulando webhook Gitea** (dispara `Trigger`):
+
+```bash
+PAYLOAD='{"ref":"refs/heads/main","repository":{"clone_url":"http://gitea-http.cicd.svc.cluster.local:3000/labadmin/realtpmsys.git"},"head_commit":{"id":"'$(git rev-parse HEAD)'"},"pusher":{"username":"labadmin"}}'
+
+kubectl -n cicd port-forward svc/el-realtpmsys-event-listener 9080:8080 &
+curl -X POST http://127.0.0.1:9080/ \
+  -H "Content-Type: application/json" -H "X-Gitea-Event: push" -d "$PAYLOAD"
+```
+
+Após o build, fazer rollout do Deployment para puxar a nova `:latest`:
+
+```bash
+kubectl -n realtpmsys rollout restart deployment/realtpmsys-api
+```
+
+## Padrão de tags da imagem
+
+A task `realtpmsys-kaniko-build-push` publica **duas tags por build**:
+
+- `harbor.lab.local/realtpmsys/api:latest` — sempre sobrescrita (puxada pelo Deployment)
+- `harbor.lab.local/realtpmsys/api:sha-<7chars>` — imutável, permite rollback
 
 O Dockerfile multi-stage fica na raiz do repo (`/Dockerfile`).
 
