@@ -2,10 +2,27 @@
 title: "realtpmsys — Arquitetura de Frontend"
 version: "1.0.0"
 date: "2026-04-15"
-status: "draft"
+status: "planejamento — não implementado"
+last_review: "2026-05-19"
 ---
 
 # realtpmsys — Arquitetura de Frontend
+
+> ## ⚠️ Status: planejamento (não implementado)
+>
+> Este documento descreve a **arquitetura projetada** para o frontend Next.js
+> do realtpmsys. Em 2026-05-19 **nenhuma linha de código frontend foi escrita**
+> — o repositório contém apenas o backend Go (`cmd/api/`, `internal/`).
+>
+> O MVP atual é **API-first**: pode ser consumido via curl, Postman ou
+> integrações externas. Para validar fluxos, ver smoke test E2E em
+> [SDD.md §6.x — Validação](SDD.md) e endpoints reais em
+> [openapi.yaml](openapi.yaml).
+>
+> **Próximo passo** quando frontend for priorizado: criar `apps/web/` no
+> repositório (seguindo a estrutura descrita abaixo) ou criar repo
+> separado `realtpmsys-web` consumindo a API publicada em
+> `http://api.realtpmsys.local:8000`.
 
 ---
 

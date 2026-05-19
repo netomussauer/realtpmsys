@@ -2,9 +2,11 @@
 
 Sistema completo para gestão de escola de futebol: cadastro de atletas, controle de turmas, frequência e mensalidades.
 
-**Stack:** Go 1.22 · Chi v5 · PostgreSQL 16 · pgx/v5 · sqlc · golang-migrate
+**Stack:** Go 1.24 · Chi v5 · PostgreSQL 16 · pgx/v5 · sqlc · golang-migrate
 
 > Stack migrada de Python para Go em 2026-04-15 — ADR-001 em [docs/SDD.md](docs/SDD.md).
+> **MVP operacional** no K3s do infra-lab em `http://api.realtpmsys.local:8000`
+> (MetalLB 192.168.1.208). CI/CD via Tekton + Kaniko + Harbor + ArgoCD.
 
 ---
 
@@ -16,43 +18,74 @@ Sistema completo para gestão de escola de futebol: cadastro de atletas, control
 | [docs/schema.sql](docs/schema.sql) | Schema PostgreSQL com todos os índices e constraints |
 | [docs/openapi.yaml](docs/openapi.yaml) | Contrato OpenAPI 3.1 de todos os endpoints |
 | [docs/persistence-guide.md](docs/persistence-guide.md) | Guia de implementação da camada de persistência em Go |
+| [docs/frontend-architecture.md](docs/frontend-architecture.md) | Arquitetura Next.js — **planejamento, não implementado** |
+| [infra/README.md](infra/README.md) | Deploy: Dockerfile, K8s, ArgoCD, Tekton pipeline |
 
 ---
 
 ## Bounded Contexts (DDD)
 
 ```text
-Identidade → Atletas → Turmas → Frequência
-                   ↘             ↗
-                    Financeiro
+Identidade ─→ Atletas ─→ Turmas ─→ Frequência
+              ↓ ↘         ↑ ↘        ↑
+          Treinadores   Campos   Financeiro
 ```
 
 | Contexto | Pacote | Responsabilidade |
 | --- | --- | --- |
-| Identidade | `internal/domain/` | Auth, perfis de usuário |
-| Atletas | `internal/domain/atleta/` | Cadastro, responsáveis, uniformes |
-| Turmas | `internal/domain/turma/` | Horários, matrículas, treinadores |
-| Frequência | `internal/domain/frequencia/` | Presenças por treino |
-| Financeiro | `internal/domain/financeiro/` | Planos, contratos, mensalidades |
+| Identidade | `internal/domain/identidade/` | `Usuario`, `Perfil`, JWT (Login) |
+| Atletas | `internal/domain/atleta/` | Cadastro, idade, CPF, máquina de estados (ATIVO/INATIVO/SUSPENSO) |
+| Treinadores | `internal/domain/treinador/` | CRUD, vínculo 1:1 com Usuario, ativar/inativar |
+| Campos | `internal/domain/campo/` | CRUD, toggle ativo/inativo (sem soft delete) |
+| Turmas | `internal/domain/turma/` | Turma + HorarioTurma (agregado) + Matricula com validações |
+| Frequência | `internal/domain/frequencia/` | Treino (1:1 turma+data) + Frequencia (lote idempotente) |
+| Financeiro | `internal/domain/financeiro/` | Plano, Contrato, Mensalidade (com máquina de estados) |
 
 ---
 
 ## Estrutura de Pastas
 
 ```text
-cmd/api/           # entry point (main.go)
+cmd/api/main.go                       # entry point + DI wiring + graceful shutdown
 internal/
-├── domain/        # Entidades, erros de domínio, interfaces (Ports)
-├── application/   # Use Cases — orquestra domínio + ports
+├── domain/                           # zero deps externas — Entidades + Ports
+│   ├── shared/errors.go              # erros sentinela + DomainError
+│   ├── identidade/                   # Usuario, Perfil
+│   ├── atleta/                       # Atleta + Responsavel + Uniforme
+│   ├── treinador/                    # Treinador
+│   ├── campo/                        # Campo
+│   ├── turma/                        # Turma + HorarioTurma + Matricula
+│   ├── frequencia/                   # Treino + Frequencia + Presenca
+│   └── financeiro/                   # Plano + Contrato + Mensalidade + GeradorMensalidadeService
+├── application/                      # Use Cases — orquestra domínio + ports
+│   ├── identidade/                   # LoginUseCase (bcrypt + JWT HS256)
+│   ├── atleta/                       # Cadastrar/Atualizar/MudarStatus/Remover
+│   ├── treinador/                    # Cadastrar/Atualizar/MudarStatus/Remover
+│   ├── campo/                        # Criar/Atualizar/Toggle
+│   ├── turma/                        # Criar/Atualizar/MudarStatus/MatricularAtleta/CancelarMatricula
+│   ├── frequencia/                   # CriarTreino/LancarFrequencia
+│   ├── financeiro/                   # FirmarContrato/RegistrarPagamento/CancelarMensalidade/Gerar/MarcarVencidas
+│   └── relatorio/                    # Service (inadimplência + frequência)
+├── config/config.go                  # env vars (DB_URL, JWT_SECRET, APP_*, ...)
 └── infrastructure/
     ├── persistence/
-    │   ├── sqlc/      # código Go gerado pelo sqlc (não editar)
-    │   ├── sqlc/queries/  # SQL fonte (.sql)
-    │   └── repository/    # Adapters concretos (pgx + sqlc)
-    ├── http/          # Chi router, handlers, middleware JWT, RFC 7807
-    └── jobs/          # robfig/cron: geração de mensalidades
-migrations/        # golang-migrate: pares up/down versionados
-docs/              # SDD, schema, OpenAPI, persistence-guide
+    │   ├── sqlc/                     # código gerado pelo sqlc — NÃO editar
+    │   ├── sqlc/queries/             # SQL fonte (.sql) — uma por domínio
+    │   ├── repository/               # Adapters (pgx + sqlc) — 10 repos
+    │   └── migrate/migrate.go        # aplica migrations no startup (lib)
+    ├── http/
+    │   ├── router.go                 # Chi router + middlewares globais
+    │   ├── middleware/auth.go        # JWT validation + RequirePerfil
+    │   ├── response/problem.go       # RFC 7807 — mapeia erros de domínio
+    │   └── handler/                  # 8 handlers (auth/atleta/treinador/...)
+    └── jobs/mensalidade_job.go       # cron mensal (geração) + diário (vencer)
+migrations/                           # golang-migrate — 000001 schema + 000002 admin
+infra/                                # deploy/CI manifests
+├── k8s/                              # Deployment + Service + SealedSecret (ns realtpmsys)
+├── tekton/                           # Pipeline + Task Kaniko + Trigger + EventListener
+└── argocd/                           # 2 Applications (k8s + tekton)
+docs/                                 # SDD, schema, OpenAPI, persistence-guide, frontend-architecture
+Dockerfile                            # multi-stage: golang:1.24-bookworm → distroless
 ```
 
 ---
@@ -180,12 +213,19 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] `config.go` — leitura validada de variáveis de ambiente
 - [x] **Build verde:** `go build ./...` e `go vet ./...` passam sem erros
 - [x] Migrations aplicadas automaticamente no startup (`golang-migrate` como lib)
-- [x] **Dockerfile multi-stage** (golang:1.22-bookworm → distroless) com binário ~25 MB
-- [x] **Manifestos K8s** completos em `infra/k8s/` (namespace, Deployment, Service LoadBalancer MetalLB, SealedSecret template)
-- [x] **Application ArgoCD** em `infra/argocd/application.yaml`
-- [x] Deploy documentado em [infra/README.md](infra/README.md)
-- [ ] Repositórios + handlers: Responsavel, Uniforme (sub-entidades de Atleta)
+- [x] **Dockerfile multi-stage** (golang:1.24-bookworm → distroless) com binário ~17 MB
+- [x] **Manifestos K8s** em `infra/k8s/` (namespace, Deployment, Service LoadBalancer MetalLB, SealedSecret real)
+- [x] **2 Applications ArgoCD**: principal (infra/k8s) + tekton (infra/tekton)
+- [x] **Pipeline Tekton** com Kaniko in-cluster — tag `:sha-<7chars>` + `:latest`
+- [x] **SealedSecrets** para credenciais (pg-password + jwt-secret + webhook-token)
+- [x] **Smoke test E2E validado** em produção lab: atleta → contrato → mensalidade →
+  pagamento → relatório de inadimplência
+- [x] Deploy + CI/CD documentados em [infra/README.md](infra/README.md)
+- [ ] Repositórios + handlers: Responsavel, Uniforme (sub-entidades de Atleta — schema já existe)
+- [ ] Endpoint `POST /auth/refresh` (config `JWT_REFRESH_EXPIRES_DAYS` existe, falta handler)
+- [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
+- [ ] ArgoCD Image Updater (bump automático do Deployment quando nova tag chega)
 - [ ] Testes (zero arquivos `*_test.go` no momento)
-- [ ] Dockerfile + manifestos K8s para deploy via ArgoCD
+- [ ] Frontend Next.js — [docs/frontend-architecture.md](docs/frontend-architecture.md) é só plano
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.

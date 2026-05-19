@@ -2,7 +2,7 @@
 
 **Para:** dev-expert-fullcycle
 **Referência:** docs/SDD.md §4 · docs/schema.sql · sqlc.yaml
-**Stack:** Go 1.22 · pgx/v5 · sqlc · golang-migrate
+**Stack:** Go 1.24 · pgx/v5 · sqlc v1.27 · golang-migrate v4.19 (lib + CLI)
 
 ---
 
@@ -217,8 +217,17 @@ func (r *PgxContratoRepository) FirmarComPrimeiraMensalidade(
 
 ## 6. Migrations com golang-migrate
 
+Migrations são aplicadas em **dois momentos**:
+
+1. **No startup do binário** (default em produção lab) — pacote
+   `internal/infrastructure/persistence/migrate` usa `golang-migrate` como
+   biblioteca. Controlado por `APP_RUN_MIGRATIONS=true` (default) e
+   `APP_MIGRATIONS_PATH=/app/migrations`. Idempotente — `migrate.ErrNoChange`
+   é silenciado. Ver ADR-005 em [SDD.md](SDD.md).
+2. **CLI durante desenvolvimento** — usar `make migrate-up/down/create`.
+
 ```bash
-# Instalar ferramenta
+# Instalar CLI (dev)
 go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
 # Aplicar todas as migrations pendentes
@@ -230,9 +239,15 @@ make migrate-down
 # Criar nova migration
 make migrate-create
 # → informar nome: add_notificacoes
-# → gera: migrations/000002_add_notificacoes.up.sql
-#          migrations/000002_add_notificacoes.down.sql
+# → gera: migrations/000003_add_notificacoes.up.sql
+#          migrations/000003_add_notificacoes.down.sql
 ```
+
+**Migrations atuais:**
+
+- `000001_initial_schema` — schema completo (13 tabelas + 10 enums + triggers + seed)
+- `000002_admin_password` — substitui placeholder por hash bcrypt válido do admin
+  (senha inicial `admin123` — **trocar em produção**)
 
 **Regras de migration:**
 
@@ -240,6 +255,33 @@ make migrate-create
 - Forward-only em produção: nunca reverter após merge na main
 - Cada migration deve ser idempotente quando possível (`CREATE TABLE IF NOT EXISTS`)
 - Migrations de dados pesados (backfill) em migration separada da estrutura
+- Em ambientes multi-réplica, o `migrate.Up()` usa **advisory lock do PG** para serializar
+
+### 6.1 Aplicação no startup (lib)
+
+```go
+// internal/infrastructure/persistence/migrate/migrate.go
+import (
+    "github.com/golang-migrate/migrate/v4"
+    _ "github.com/golang-migrate/migrate/v4/database/postgres"
+    _ "github.com/golang-migrate/migrate/v4/source/file"
+)
+
+func Run(logger *slog.Logger, databaseURL, migrationsPath string) error {
+    m, err := migrate.New("file://"+migrationsPath, databaseURL)
+    if err != nil {
+        return fmt.Errorf("migrate init: %w", err)
+    }
+    defer m.Close()
+    if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+        return fmt.Errorf("migrate up: %w", err)
+    }
+    return nil
+}
+```
+
+Chamada em `cmd/api/main.go` **antes** de abrir o `pgxpool` — garante que
+o pool encontra schema válido.
 
 ---
 

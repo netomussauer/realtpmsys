@@ -1,9 +1,17 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.0.0  
-**Data:** 2026-04-15  
-**Arquiteto:** dev-arquiteto  
-**Status:** Aprovado para implementação — Stack migrada para Go
+**Versão:** 2.1.0
+**Data:** 2026-05-19
+**Arquiteto:** dev-arquiteto
+**Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
+
+> **Mudanças vs v2.0.0 (2026-04-15):**
+>
+> - Stack Go: 1.22 → 1.24 (golang-migrate 4.19+ exige Go 1.24)
+> - Adicionados ADR-005 (migrations no startup), ADR-006 (MetalLB sem Ingress),
+>   ADR-007 (Tekton + Kaniko para build in-cluster)
+> - Bounded contexts: Treinador e Campo promovidos a domínios próprios
+>   (antes eram tabelas avulsas referenciadas por Turma)
 
 ---
 
@@ -117,8 +125,28 @@ flowchart LR
 **Razão:** Lógica de negócio deve ficar na camada de domínio, não no banco. Facilita testes e debugging.
 
 #### ADR-004 — Soft delete em todas as entidades
-**Decisão:** Nenhuma entidade é deletada fisicamente — campo `deletado_em` controla exclusão lógica.  
+
+**Decisão:** Nenhuma entidade é deletada fisicamente — campo `deletado_em` controla exclusão lógica.
 **Razão:** Auditoria financeira exige histórico completo. Atleta inativo ainda deve ter mensalidades visíveis.
+**Exceção:** `campos` usa flag `ativo` boolean (sem soft delete) — não tem dependência financeira.
+
+#### ADR-005 — Migrations aplicadas no startup do binário *(adicionado em 2026-05-18)*
+
+**Decisão:** O binário aplica as migrations pendentes via `golang-migrate` (lib) antes de abrir o pool pgx, controlado por `APP_RUN_MIGRATIONS=true` (default).
+**Razão:** Elimina a necessidade de Job/initContainer separado de migration no K8s. Atomicidade: o pod só fica `Ready` quando schema está alinhado com o código. Idempotente — `migrate.ErrNoChange` é silenciado.
+**Trade-off:** Em rollout com múltiplas réplicas, todas tentam aplicar; o `migrate` usa advisory lock do PG para serializar. Para migrations pesadas (>1min) seria melhor um Job separado — mas neste MVP migrations são leves (schema único + admin password).
+
+#### ADR-006 — MetalLB LoadBalancer ao invés de Ingress *(adicionado em 2026-05-18)*
+
+**Decisão:** Service tipo `LoadBalancer` com `loadBalancerIP` fixo no pool MetalLB (192.168.1.208), ao invés de Ingress + Controller (NGINX/Traefik dedicado).
+**Razão:** O lab K3s não tem Ingress Controller próprio (Traefik default do K3s desabilitado). MetalLB é mais simples para um único serviço HTTP por app. DNS resolvido via Pi-hole (`api.realtpmsys.local → 192.168.1.208`).
+**Trade-off:** Não há terminação TLS no LB — em prod usar Ingress + cert-manager. Cada novo app consome um IP MetalLB do pool.
+
+#### ADR-007 — CI/CD via Tekton + Kaniko in-cluster *(adicionado em 2026-05-19)*
+
+**Decisão:** Pipeline Tekton no namespace `cicd` builda a imagem com Kaniko (sem Docker daemon) a partir do clone Gitea, publica em Harbor (`harbor.lab.local`) com tag dupla `:latest` + `:sha-<7chars>`.
+**Razão:** Kaniko roda 100% in-cluster — sem necessidade de Docker daemon, sem GitHub Actions externo, sem expor secrets do registry para CI externo. Tekton já estava instalado no lab. Tag `sha-<7chars>` é imutável e permite rollback.
+**Trade-off:** Mirror PULL do Gitea (do GitHub) não dispara webhook nativamente — webhook só funciona em push direto ao Gitea. Workaround atual: invocar EventListener via curl após `mirror-sync` ou disparar PipelineRun manual via `kubectl create`. Para automação completa, ou migrar para Gitea-primary (push reverso pro GitHub) ou rodar CronJob de polling.
 
 ---
 
@@ -329,34 +357,59 @@ erDiagram
 
 ### 3.1 Tabela de Endpoints
 
+Endpoints **implementados** no MVP. Marcador 🚧 = previsto mas ainda não implementado.
+
 | Método | Path | Autenticação | Descrição |
 |---|---|---|---|
-| POST | `/auth/login` | Público | Gera JWT |
-| POST | `/auth/refresh` | Bearer | Renova token |
-| GET | `/atletas` | ADMIN, TREINADOR | Lista atletas (paginado, filtros) |
-| POST | `/atletas` | ADMIN | Cadastra atleta |
-| GET | `/atletas/{id}` | ADMIN, TREINADOR | Detalhe do atleta |
-| PUT | `/atletas/{id}` | ADMIN | Atualiza atleta |
-| DELETE | `/atletas/{id}` | ADMIN | Soft delete |
-| POST | `/atletas/{id}/responsaveis` | ADMIN | Adiciona responsável |
-| GET | `/turmas` | ADMIN, TREINADOR | Lista turmas |
-| POST | `/turmas` | ADMIN | Cria turma |
-| POST | `/turmas/{id}/matriculas` | ADMIN | Matricula atleta |
-| GET | `/turmas/{id}/matriculas` | ADMIN, TREINADOR | Lista matrículas |
-| POST | `/treinos` | TREINADOR, ADMIN | Registra treino |
-| POST | `/treinos/{id}/frequencias` | TREINADOR, ADMIN | Lança presenças em lote |
-| GET | `/treinos/{id}/frequencias` | ADMIN, TREINADOR | Consulta frequências |
-| GET | `/planos` | ADMIN | Lista planos |
-| POST | `/planos` | ADMIN | Cria plano |
-| POST | `/contratos` | ADMIN | Firma contrato atleta/plano |
-| GET | `/mensalidades` | ADMIN | Lista mensalidades (filtros: status, mes, atleta) |
-| GET | `/mensalidades/{id}` | ADMIN, RESPONSAVEL | Detalhe mensalidade |
-| PATCH | `/mensalidades/{id}/pagar` | ADMIN | Registra pagamento |
-| PATCH | `/mensalidades/{id}/cancelar` | ADMIN | Cancela mensalidade |
-| POST | `/mensalidades/gerar` | ADMIN | Gera mensalidades do mês |
-| GET | `/relatorios/inadimplencia` | ADMIN | Relatório de inadimplência |
-| GET | `/relatorios/frequencia/{atleta_id}` | ADMIN, TREINADOR | Frequência por atleta |
-| GET | `/relatorios/frequencia/turma/{turma_id}` | ADMIN, TREINADOR | Frequência por turma |
+| GET | `/health` | Público | Healthcheck (sem auth) |
+| POST | `/auth/login` | Público | Gera JWT HS256 (60min) |
+| POST | `/auth/refresh` | Bearer | 🚧 Renova token (config existe, falta handler) |
+| GET | `/api/v1/atletas?nome=&status=&page=&per_page=` | ADMIN, TREINADOR | Lista paginada |
+| POST | `/api/v1/atletas` | ADMIN | Cadastra atleta |
+| GET | `/api/v1/atletas/{id}` | ADMIN, TREINADOR | Detalhe |
+| PUT | `/api/v1/atletas/{id}` | ADMIN | Atualiza |
+| DELETE | `/api/v1/atletas/{id}` | ADMIN | Soft delete |
+| PATCH | `/api/v1/atletas/{id}/inativar` \| `/suspender` \| `/reativar` | ADMIN | Transições de status |
+| POST | `/api/v1/atletas/{id}/responsaveis` | ADMIN | 🚧 Adiciona responsável |
+| GET | `/api/v1/treinadores?nome=&status=&page=&per_page=` | ADMIN, TREINADOR | Lista |
+| POST | `/api/v1/treinadores` | ADMIN | Cadastra (exige `usuario_id`) |
+| GET | `/api/v1/treinadores/{id}` | ADMIN, TREINADOR | Detalhe |
+| PUT | `/api/v1/treinadores/{id}` | ADMIN | Atualiza |
+| DELETE | `/api/v1/treinadores/{id}` | ADMIN | Soft delete |
+| PATCH | `/api/v1/treinadores/{id}/ativar` \| `/inativar` | ADMIN | Transições |
+| GET | `/api/v1/campos?nome=&ativo=&page=&per_page=` | ADMIN, TREINADOR | Lista |
+| POST | `/api/v1/campos` | ADMIN | Cria |
+| GET | `/api/v1/campos/{id}` | ADMIN, TREINADOR | Detalhe |
+| PUT | `/api/v1/campos/{id}` | ADMIN | Atualiza |
+| PATCH | `/api/v1/campos/{id}/ativar` \| `/inativar` | ADMIN | Toggle `ativo` |
+| GET | `/api/v1/turmas?nome=&status=&page=&per_page=` | ADMIN, TREINADOR | Lista |
+| POST | `/api/v1/turmas` | ADMIN | Cria turma + horários (transação) |
+| GET | `/api/v1/turmas/{id}` | ADMIN, TREINADOR | Detalhe (inclui horários) |
+| PUT | `/api/v1/turmas/{id}` | ADMIN | Atualiza turma + horários |
+| PATCH | `/api/v1/turmas/{id}/encerrar` \| `/suspender` \| `/reativar` | ADMIN | Transições |
+| POST | `/api/v1/turmas/{id}/matriculas` | ADMIN | Matricula (valida idade, vagas, duplicata) |
+| GET | `/api/v1/turmas/{id}/matriculas?status=` | ADMIN, TREINADOR | Lista matrículas |
+| PATCH | `/api/v1/matriculas/{id}/cancelar` | ADMIN | Cancela matrícula |
+| POST | `/api/v1/turmas/{id}/treinos` | ADMIN, TREINADOR | Cria treino (1:1 turma+data) |
+| GET | `/api/v1/turmas/{id}/treinos?data_inicio=&data_fim=` | ADMIN, TREINADOR | Lista treinos |
+| POST | `/api/v1/treinos/{id}/frequencias` | ADMIN, TREINADOR | Lança presenças em lote (idempotente) |
+| GET | `/api/v1/treinos/{id}/frequencias` | ADMIN, TREINADOR | Consulta frequências |
+| GET | `/api/v1/planos` | ADMIN | 🚧 Lista planos (use case existe, falta handler) |
+| POST | `/api/v1/planos` | ADMIN | 🚧 Cria plano |
+| POST | `/api/v1/contratos` | ADMIN | Firma contrato atleta/plano |
+| GET | `/api/v1/mensalidades?atleta_id=&status=&competencia_ano=&competencia_mes=` | ADMIN, RESPONSAVEL | Lista paginada + resumo financeiro |
+| GET | `/api/v1/mensalidades/{id}` | ADMIN | Detalhe |
+| PATCH | `/api/v1/mensalidades/{id}/pagar` | ADMIN | Registra pagamento |
+| PATCH | `/api/v1/mensalidades/{id}/cancelar` | ADMIN | Cancela |
+| POST | `/api/v1/mensalidades/gerar` | ADMIN | Gera mensalidades do mês (idempotente) |
+| GET | `/api/v1/relatorios/inadimplencia?competencia_ano=&competencia_mes=` | ADMIN | Inadimplência + resumo |
+| GET | `/api/v1/relatorios/frequencia/{atleta_id}?data_inicio=&data_fim=` | ADMIN, TREINADOR | Freq. por atleta + taxa |
+| GET | `/api/v1/relatorios/frequencia/turma/{turma_id}?data_inicio=&data_fim=` | ADMIN, TREINADOR | Freq. consolidada por turma |
+
+**Cron jobs ativos:**
+
+- `0 6 1 * *` — gera mensalidades do mês para todos os contratos ATIVO (idempotente)
+- `0 1 * * *` — `MarcarMensalidadesVencidas`: UPDATE em massa PENDENTE→VENCIDO
 
 ### 3.2 Padrão de Erros
 
@@ -395,22 +448,26 @@ Todos os endpoints de listagem seguem o padrão cursor-based ou offset:
 
 ## 4. Stack Tecnológica
 
-### 4.1 Stack Adotada: Go 1.22
+### 4.1 Stack Adotada: Go 1.24
 
 | Componente | Tecnologia | Justificativa |
 |---|---|---|
-| API Principal | Go 1.22 + Chi v5 | Binário estático ~20 MB, goroutines nativas, type safety em compile-time |
-| Queries SQL | sqlc + pgx/v5 | Queries type-safe geradas a partir do SQL — zero ORM overhead |
-| Migrations | golang-migrate v4 | Par up/down versionado, integrado ao Makefile |
+| API Principal | Go 1.24 + Chi v5 | Binário estático ~17 MB, goroutines nativas, type safety em compile-time |
+| Queries SQL | sqlc v1.27 + pgx/v5 | Queries type-safe geradas a partir do SQL — zero ORM overhead |
+| Migrations | golang-migrate v4.19 (lib + CLI) | Aplica no startup; pares up/down versionados |
 | Autenticação | golang-jwt/jwt v5 + bcrypt | Stdlib-friendly, sem reflexão pesada |
 | Job Scheduler | robfig/cron v3 | Expressões cron POSIX, goroutine por job |
-| Testes | testing + testify + build tags | Table-driven tests, testes de integração isolados por build tag |
-| Observabilidade | OpenTelemetry Go SDK + Prometheus | Padrão de mercado, instrumentação automática Chi/pgx |
-| Banco | PostgreSQL 16 | Enums, UUID, transações ACID para financeiro |
+| Testes | testing + testify + build tags | Table-driven tests; integração via build tag |
+| Observabilidade | OpenTelemetry Go SDK (no `go.mod`, ainda **não wireado**) | Reservado para Prometheus + tracing |
+| Banco | PostgreSQL 16 (`shared-infra`) | Enums, UUID, transações ACID para financeiro |
+| Imagem | distroless `static-debian12:nonroot` | Sem package manager, user 65532, ~17 MB |
+| Deploy | K3s + ArgoCD + MetalLB | GitOps; LoadBalancer 192.168.1.208 |
+| CI/CD | Tekton Pipelines + Kaniko + Harbor | Build in-cluster; tag dupla `:latest` + `:sha-<7chars>` |
+| Secrets | Bitnami SealedSecrets | Selados em git, decryptados no cluster |
 
 **Vantagens concretas de Go neste contexto:**
 
-- Binário único sem runtime — deploy é `COPY` no Dockerfile, imagem final < 25 MB.
+- Binário único sem runtime — deploy é `COPY` no Dockerfile, imagem final ~17 MB.
 - ~15–30 MB de RAM baseline vs ~90–150 MB por worker Python — crítico em ambiente com capacity restrito.
 - Interfaces implícitas tornam Ports & Adapters idiomático: `var _ domain.Repo = (*PgxRepo)(nil)` garante contrato em compile-time.
 - `sqlc` elimina N+1 silenciosos e erros de tipo em queries — o compilador rejeita discrepâncias entre SQL e struct.
@@ -419,79 +476,64 @@ Todos os endpoints de listagem seguem o padrão cursor-based ou offset:
 
 ```text
 realtpmsys/
-├── cmd/
-│   └── api/
-│       └── main.go                      # entry point, DI wiring, graceful shutdown
+├── cmd/api/main.go                      # entry point + DI wiring + graceful shutdown
 │
 ├── internal/
-│   ├── domain/                          # Camada de Domínio (zero dependências externas)
-│   │   ├── atleta/
-│   │   │   ├── entity.go                # Atleta, Responsavel, Uniforme + regras de negócio
-│   │   │   └── repository.go            # interface Repository (Port)
-│   │   ├── turma/
-│   │   │   ├── entity.go                # Turma, Matricula, Treino, HorarioTurma
-│   │   │   └── repository.go
-│   │   ├── financeiro/
-│   │   │   ├── entity.go                # Plano, Contrato, Mensalidade + máquina de estados
-│   │   │   ├── repository.go            # interfaces PlanoRepository, ContratoRepository, MensalidadeRepository
-│   │   │   └── service.go               # GeradorMensalidadeService (lógica pura, sem I/O)
-│   │   ├── frequencia/
-│   │   │   ├── entity.go                # Frequencia
-│   │   │   └── repository.go
-│   │   └── shared/
-│   │       └── errors.go                # erros sentinela + DomainError
+│   ├── domain/                          # Camada de Domínio (zero deps externas)
+│   │   ├── shared/errors.go             # erros sentinela + DomainError
+│   │   ├── identidade/                  # Usuario + Perfil enum
+│   │   ├── atleta/                      # Atleta + Responsavel + Uniforme
+│   │   ├── treinador/                   # Treinador (1:1 com Usuario)
+│   │   ├── campo/                       # Campo (sem soft delete)
+│   │   ├── turma/                       # Turma + HorarioTurma + Matricula
+│   │   ├── frequencia/                  # Treino + Frequencia + Presenca enum
+│   │   └── financeiro/                  # Plano + Contrato + Mensalidade + GeradorMensalidadeService
 │   │
-│   ├── application/                     # Casos de Uso (orquestra domínio + ports)
-│   │   ├── atleta/
-│   │   │   └── use_cases.go             # CadastrarAtletaUseCase, InativarAtletaUseCase
-│   │   ├── turma/
-│   │   │   └── use_cases.go             # CriarTurmaUseCase, MatricularAtletaUseCase
-│   │   ├── financeiro/
-│   │   │   └── use_cases.go             # FirmarContratoUseCase, GerarMensalidadesUseCase, RegistrarPagamentoUseCase
-│   │   └── frequencia/
-│   │       └── use_cases.go             # LancarFrequenciaUseCase
+│   ├── application/                     # Use Cases (orquestra domínio + ports)
+│   │   ├── identidade/                  # LoginUseCase (bcrypt + JWT HS256)
+│   │   ├── atleta/                      # Cadastrar/Atualizar/MudarStatus/Remover
+│   │   ├── treinador/                   # CRUD + MudarStatus
+│   │   ├── campo/                       # CRUD + Toggle ativo
+│   │   ├── turma/                       # CRUD + MatricularAtleta + CancelarMatricula
+│   │   ├── frequencia/                  # CriarTreino + LancarFrequencia (lote idempotente)
+│   │   ├── financeiro/                  # FirmarContrato + Gerar/RegistrarPagamento/Cancelar/MarcarVencidas
+│   │   └── relatorio/                   # Service (Inadimplência + Frequência) + DTOs
 │   │
-│   ├── infrastructure/                  # Adapters (Chi, pgx, cron)
-│   │   ├── persistence/
-│   │   │   ├── sqlc/                    # Código Go gerado pelo sqlc (nunca editar)
-│   │   │   │   ├── db.go
-│   │   │   │   ├── models.go
-│   │   │   │   └── *.sql.go
-│   │   │   ├── sqlc/queries/            # SQL fonte para o sqlc
-│   │   │   │   ├── atleta.sql
-│   │   │   │   ├── mensalidade.sql
-│   │   │   │   └── contrato.sql
-│   │   │   └── repository/              # Implementações concretas dos Ports
-│   │   │       ├── atleta_repository.go
-│   │   │       ├── mensalidade_repository.go
-│   │   │       ├── contrato_repository.go
-│   │   │       └── frequencia_repository.go
-│   │   ├── http/
-│   │   │   ├── router.go                # Chi router, middlewares globais, registro de rotas
-│   │   │   ├── handler/
-│   │   │   │   ├── atleta_handler.go
-│   │   │   │   ├── mensalidade_handler.go
-│   │   │   │   ├── turma_handler.go
-│   │   │   │   └── relatorio_handler.go
-│   │   │   ├── middleware/
-│   │   │   │   └── auth.go              # JWT validation, RequirePerfil
-│   │   │   └── response/
-│   │   │       └── problem.go           # RFC 7807 — mapeamento domínio → HTTP
-│   │   └── jobs/
-│   │       └── mensalidade_job.go       # robfig/cron: gerar mensalidades dia 1, marcar vencidas
+│   ├── config/config.go                 # env vars validadas (DB, JWT, Server, Migrations)
 │   │
-│   └── config/
-│       └── config.go                    # leitura e validação de variáveis de ambiente
+│   └── infrastructure/                  # Adapters (Chi, pgx, cron)
+│       ├── persistence/
+│       │   ├── sqlc/                    # código gerado — NÃO editar
+│       │   ├── sqlc/queries/            # SQL fonte (.sql) — uma por domínio
+│       │   ├── repository/              # 10 adapters pgx + sqlc
+│       │   └── migrate/migrate.go       # aplica migrations no startup (ADR-005)
+│       ├── http/
+│       │   ├── router.go                # Chi + middlewares + rotas
+│       │   ├── middleware/auth.go       # JWT validation + RequirePerfil
+│       │   ├── response/problem.go      # RFC 7807 — mapeia erros de domínio
+│       │   └── handler/                 # 8 handlers (Auth/Atleta/Treinador/Campo/Turma/Treino/Mensalidade/Contrato/Relatorio)
+│       └── jobs/mensalidade_job.go      # cron: gerar mensal + marcar vencidas diário
 │
-├── migrations/                          # golang-migrate: pares up/down versionados
-│   ├── 000001_initial_schema.up.sql
-│   └── 000001_initial_schema.down.sql
+├── migrations/                          # golang-migrate (up/down)
+│   ├── 000001_initial_schema.{up,down}.sql
+│   └── 000002_admin_password.{up,down}.sql
 │
-├── docs/
-│   ├── SDD.md                           # Este documento
-│   ├── schema.sql                       # Schema PostgreSQL canônico
-│   ├── openapi.yaml                     # Contrato de API (inalterado)
-│   └── persistence-guide.md            # Guia para dev-expert-fullcycle
+├── infra/                               # Deploy + CI (fora do binário)
+│   ├── k8s/                             # ns realtpmsys: namespace + Deployment + Service + SealedSecret
+│   ├── tekton/                          # ns cicd: Pipeline + Task Kaniko + Triggers + EventListener
+│   ├── argocd/                          # 2 Applications (k8s + tekton)
+│   └── README.md                        # runbook de deploy
+│
+├── docs/                                # Design docs
+│   ├── SDD.md                           # este documento
+│   ├── schema.sql                       # schema PostgreSQL canônico
+│   ├── openapi.yaml                     # contrato OpenAPI 3.1
+│   ├── persistence-guide.md             # padrões da camada de dados
+│   └── frontend-architecture.md         # plano Next.js (não implementado)
+│
+├── Dockerfile                           # multi-stage: golang:1.24-bookworm → distroless
+├── .dockerignore
+└── sqlc.yaml                            # config sqlc (pgx/v5 + overrides + rename)
 │
 ├── sqlc.yaml                            # Configuração do gerador sqlc
 ├── Makefile                             # run, build, test, lint, sqlc, migrate-*

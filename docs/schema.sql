@@ -1,7 +1,19 @@
 -- =============================================================================
 -- realtpmsys — Schema PostgreSQL 16
--- Versão: 1.0.0  |  Data: 2026-04-14
+-- Versão: 1.0.0  |  Data: 2026-04-14  |  Última revisão: 2026-05-19
 -- Referência: docs/SDD.md §2
+-- =============================================================================
+--
+-- ATENÇÃO: este arquivo é o schema CANÔNICO usado como referência.
+-- O schema real do banco é aplicado pelas migrations versionadas em
+-- /migrations (golang-migrate). Sempre que alterar este arquivo,
+-- gerar uma migration correspondente.
+--
+-- Migrations aplicadas:
+--   000001_initial_schema  — todo o schema deste arquivo
+--   000002_admin_password  — UPDATE usuarios SET senha_hash=<bcrypt('admin123')>
+--                            WHERE email='admin@realtpmsys.local'
+--
 -- =============================================================================
 
 -- Extensão para UUIDs
