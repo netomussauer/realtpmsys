@@ -42,7 +42,14 @@ func main() {
 	}
 }
 
+// Version e Commit são setados via ldflags do build (Dockerfile/Tekton).
+var (
+	Version = "dev"
+	Commit  = "unknown"
+)
+
 func run(logger *slog.Logger) error {
+	logger.Info("realtpmsys starting", "version", Version, "commit", Commit, "features", "responsavel-uniforme")
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("carregar config: %w", err)
@@ -89,6 +96,8 @@ func run(logger *slog.Logger) error {
 	relatorioRepo := repository.NewPgxRelatorioRepository(pool)
 	treinadorRepo := repository.NewPgxTreinadorRepository(pool)
 	campoRepo := repository.NewPgxCampoRepository(pool)
+	responsavelRepo := repository.NewPgxResponsavelRepository(pool)
+	uniformeRepo := repository.NewPgxUniformeRepository(pool)
 
 	// Use Cases — Financeiro
 	registrarPagamento := appfinanceiro.NewRegistrarPagamentoUseCase(mensalidadeRepo)
@@ -100,11 +109,15 @@ func run(logger *slog.Logger) error {
 	// Use Cases — Identidade
 	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
 
-	// Use Cases — Atletas
+	// Use Cases — Atletas (+ Responsavel + Uniforme)
 	cadastrarAtleta := appatleta.NewCadastrarAtletaUseCase(atletaRepo)
 	atualizarAtleta := appatleta.NewAtualizarAtletaUseCase(atletaRepo)
 	mudarStatusAtleta := appatleta.NewMudarStatusAtletaUseCase(atletaRepo)
 	removerAtleta := appatleta.NewRemoverAtletaUseCase(atletaRepo)
+	adicionarResponsavel := appatleta.NewAdicionarResponsavelUseCase(atletaRepo, responsavelRepo)
+	atualizarResponsavel := appatleta.NewAtualizarResponsavelUseCase(responsavelRepo)
+	removerResponsavel := appatleta.NewRemoverResponsavelUseCase(responsavelRepo)
+	setUniforme := appatleta.NewSetUniformeUseCase(atletaRepo, uniformeRepo)
 
 	// Use Cases — Turmas + Matrículas
 	criarTurma := appturma.NewCriarTurmaUseCase(turmaRepo)
@@ -135,6 +148,7 @@ func run(logger *slog.Logger) error {
 	handlers := infrahttp.Handlers{
 		Auth:        handler.NewAuthHandler(loginUseCase),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
+		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo),
 		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),
 		Campo:       handler.NewCampoHandler(criarCampo, atualizarCampo, toggleCampo, campoRepo),
 		Turma:       handler.NewTurmaHandler(criarTurma, atualizarTurma, mudarStatusTurma, matricularAtleta, cancelarMatricula, turmaRepo, matriculaRepo),

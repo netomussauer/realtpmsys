@@ -76,6 +76,15 @@ func (h *ResponsavelHandler) ListPorAtleta(w http.ResponseWriter, r *http.Reques
 		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "id do atleta inválido"})
 		return
 	}
+	// DEBUG temporário
+	if h == nil {
+		response.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "ResponsavelHandler is nil"})
+		return
+	}
+	if h.respRepo == nil {
+		response.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "h.respRepo is nil"})
+		return
+	}
 	rows, err := h.respRepo.ListByAtleta(r.Context(), atletaID)
 	if err != nil {
 		response.WriteError(w, r, err)
