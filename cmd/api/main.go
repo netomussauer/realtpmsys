@@ -49,7 +49,7 @@ var (
 )
 
 func run(logger *slog.Logger) error {
-	logger.Info("realtpmsys starting", "version", Version, "commit", Commit, "features", "responsavel-uniforme")
+	logger.Info("realtpmsys starting", "version", Version, "commit", Commit)
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("carregar config: %w", err)
