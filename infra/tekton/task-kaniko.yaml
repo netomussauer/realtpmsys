@@ -28,7 +28,7 @@ spec:
   params:
     - name: image
       type: string
-      description: Repositório da imagem (ex: harbor.lab.local/realtpmsys/api)
+      description: "Repositório da imagem (ex: harbor.lab.local/realtpmsys/api)"
     - name: tag
       type: string
       default: "latest"
