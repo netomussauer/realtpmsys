@@ -1,0 +1,93 @@
+# Pipeline de build + push da imagem realtpmsys API (Go).
+#
+# Stages:
+#   git-clone (shallow do Gitea mirror)
+#   → kaniko-build-push (Dockerfile da raiz → harbor.lab.local/realtpmsys/api)
+#
+# Tasks reutilizadas (já existem em cicd, compartilhadas com outras pipelines):
+#   - amfit-git-clone     → cópia debian-based (musl getaddrinfo bug fix)
+#   - kaniko-build-push   → genérica, faz push de :tag + :latest e expõe digest
+#
+# Falha fast: qualquer task com erro aborta o pipeline.
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: realtpmsys-build-api
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "pipeline-api"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-tekton"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Pipeline de build + push da imagem realtpmsys API (Go).
+    Stages: git-clone -> kaniko build/push (Dockerfile na raiz).
+    Reutiliza Tasks compartilhadas no ns cicd.
+  params:
+    - name: git-url
+      type: string
+      description: URL do repositório Gitea (mirror).
+      default: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/realtpmsys.git"
+    - name: git-revision
+      type: string
+      description: Branch/tag/SHA a buildar.
+      default: "main"
+    - name: image-repo
+      type: string
+      description: Repositório Harbor de destino.
+      default: "harbor.lab.local/realtpmsys/api"
+    - name: image-tag
+      type: string
+      description: Tag da imagem (além de :latest que sempre é pushada).
+      default: "latest"
+  results:
+    - name: image-digest
+      description: Digest sha256 da imagem publicada.
+      value: "$(tasks.kaniko-build-push.results.image-digest)"
+    - name: commit
+      description: SHA do commit buildado.
+      value: "$(tasks.git-clone.results.commit)"
+  tasks:
+    - name: git-clone
+      taskRef:
+        kind: Task
+        name: amfit-git-clone     # reutiliza a task debian-based existente
+      params:
+        - name: url
+          value: "$(params.git-url)"
+        - name: revision
+          value: "$(params.git-revision)"
+        - name: depth
+          value: "1"
+      workspaces:
+        - name: source
+          workspace: source
+    - name: kaniko-build-push
+      taskRef:
+        kind: Task
+        name: kaniko-build-push
+      runAfter: ["git-clone"]
+      params:
+        - name: image
+          value: "$(params.image-repo)"
+        - name: tag
+          value: "$(params.image-tag)"
+        - name: dockerfile
+          value: "Dockerfile"
+        - name: context
+          value: "."
+      workspaces:
+        - name: source
+          workspace: source
+        - name: docker-credentials
+          workspace: docker-credentials
+  workspaces:
+    - name: source
+      description: Workspace onde o código é clonado e compartilhado entre tasks.
+    - name: docker-credentials
+      description: Workspace que monta o Secret harbor-push-realtpmsys (config.json) para Kaniko.

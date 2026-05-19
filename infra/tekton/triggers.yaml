@@ -1,0 +1,198 @@
+# Triggers Tekton para o webhook push do Gitea no repo labadmin/realtpmsys.
+#
+# Fluxo:
+#   Gitea push → EventListener (realtpmsys-event-listener)
+#                ↓ gitea interceptor (valida HMAC do secret)
+#                ↓ cel interceptor (filtra refs/heads/main + extrai short_sha)
+#                ↓ realtpmsys-gitea-binding (mapeia body → params)
+#                ↓ realtpmsys-build-template (cria PipelineRun)
+#   PipelineRun realtpmsys-build-api-<sha7>-<rand>
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: realtpmsys-gitea-binding
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger-binding"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-tekton"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  params:
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.head_commit.id)
+    - name: git-revision-short
+      value: $(extensions.short_sha)
+    - name: git-ref
+      value: $(body.ref)
+    - name: pusher
+      value: $(body.pusher.username)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: realtpmsys-build-template
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger-template"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-tekton"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+    - name: git-revision-short
+    - name: git-ref
+    - name: pusher
+      default: "unknown"
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: realtpmsys-build-api-$(tt.params.git-revision-short)-
+        namespace: cicd
+        annotations:
+          gitea.io/pusher: "$(tt.params.pusher)"
+          gitea.io/ref: "$(tt.params.git-ref)"
+        labels:
+          app.kubernetes.io/component: "pipelinerun-api"
+          app.kubernetes.io/managed-by: "argocd"
+          app.kubernetes.io/name: "realtpmsys-tekton"
+          environment: "dev"
+          git-revision-short: "$(tt.params.git-revision-short)"
+          lab_id: "lab-k8s-01"
+          lab_owner: "jose.mussauer"
+          tekton.dev/pipeline: "realtpmsys-build-api"
+          trigger: "gitea-push"
+      spec:
+        pipelineRef:
+          name: realtpmsys-build-api
+        serviceAccountName: tekton-realtpmsys
+        timeouts:
+          pipeline: "30m"
+          tasks: "20m"
+        taskRunTemplate:
+          podTemplate:
+            nodeSelector:
+              workload: cicd
+            securityContext:
+              fsGroup: 65532
+        params:
+          - name: git-url
+            # Webhook envia clone_url externo (http://gitea.lab.local/...).
+            # Substitui pelo Service DNS interno para não depender de Pi-hole.
+            value: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/realtpmsys.git"
+          - name: git-revision
+            value: "$(tt.params.git-revision)"
+          - name: image-repo
+            value: "harbor.lab.local/realtpmsys/api"
+          - name: image-tag
+            # Usa o short SHA do commit como tag para permitir rollback.
+            # A task kaniko-build-push também publica :latest automaticamente.
+            value: "sha-$(tt.params.git-revision-short)"
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: "5Gi"
+                storageClassName: local-path
+          - name: docker-credentials
+            secret:
+              secretName: harbor-push-realtpmsys
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: realtpmsys-gitea-push
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-tekton"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  serviceAccountName: tekton-realtpmsys
+  bindings:
+    - ref: realtpmsys-gitea-binding
+      kind: TriggerBinding
+  interceptors:
+    - ref:
+        kind: ClusterInterceptor
+        name: gitea
+      params:
+        - name: secretRef
+          value:
+            secretName: realtpmsys-webhook-secret
+            secretKey: secretToken
+        - name: eventTypes
+          value: ["push"]
+    - ref:
+        kind: ClusterInterceptor
+        name: cel
+      params:
+        - name: filter
+          value: "body.ref == 'refs/heads/main'"
+        - name: overlays
+          value:
+            - key: short_sha
+              expression: "body.head_commit.id.truncate(7)"
+  template:
+    ref: realtpmsys-build-template
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: realtpmsys-event-listener
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "event-listener"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-tekton"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  serviceAccountName: tekton-realtpmsys
+  triggers:
+    - triggerRef: realtpmsys-gitea-push
+  resources:
+    kubernetesResource:
+      serviceType: ClusterIP
+      spec:
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/component: "event-listener"
+              app.kubernetes.io/name: "realtpmsys-tekton"
+              environment: "dev"
+              lab_id: "lab-k8s-01"
+              lab_owner: "jose.mussauer"
+          spec:
+            nodeSelector:
+              workload: cicd
+            containers:
+              - name: ""
+                resources:
+                  requests:
+                    cpu: "50m"
+                    memory: "64Mi"
+                  limits:
+                    cpu: "200m"
+                    memory: "256Mi"
