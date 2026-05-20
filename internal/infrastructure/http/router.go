@@ -7,9 +7,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/middleware"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/response"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/metrics"
 )
 
 // Handlers agrupa as dependências de handler injetadas no router.
@@ -35,6 +37,7 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	r.Use(middleware.Audit(logger))
+	r.Use(metrics.HTTPMiddleware())
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.StripSlashes)
 
@@ -45,6 +48,11 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 			"service": "realtpmsys",
 		})
 	})
+
+	// /metrics — endpoint scraped pelo kube-prometheus-stack (ServiceMonitor
+	// em infra/k8s/servicemonitor.yaml). Sem auth: rede interna do cluster.
+	// Cardinalidade controlada pelo middleware (label `path` = RoutePattern).
+	r.Handle("/metrics", promhttp.Handler())
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/login", h.Auth.Login)

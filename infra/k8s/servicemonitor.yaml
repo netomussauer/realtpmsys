@@ -1,0 +1,45 @@
+# ServiceMonitor: o kube-prometheus-stack do lab está configurado com
+# `serviceMonitorSelector.matchLabels.release: kube-prometheus-stack` e
+# `serviceMonitorNamespaceSelector: {}` (cross-namespace). Por isso a
+# label `release: kube-prometheus-stack` é OBRIGATÓRIA para o scrape
+# começar — sem ela o operator ignora o ServiceMonitor.
+#
+# Endpoint: /metrics na porta `http` (8000) do Service realtpmsys-api.
+# Scrape a cada 30s — coerente com a granularidade do dashboard. interval
+# < 15s só faz sentido com SLOs sub-segundo.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: realtpmsys-api
+  namespace: realtpmsys
+  labels:
+    # Identidade do app
+    app.kubernetes.io/name: "realtpmsys-api"
+    app.kubernetes.io/component: "service-monitor"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+    # Discriminator do Prometheus operator no lab
+    release: "kube-prometheus-stack"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "realtpmsys-api"
+  namespaceSelector:
+    matchNames:
+      - "realtpmsys"
+  endpoints:
+    - port: "http"
+      path: "/metrics"
+      interval: "30s"
+      scrapeTimeout: "10s"
+      honorLabels: false
+      # Renomeia o label `instance` para conter o pod, não o IP:porta —
+      # facilita correlação com logs (Loki) e troubleshooting.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace

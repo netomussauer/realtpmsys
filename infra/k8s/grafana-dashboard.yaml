@@ -1,0 +1,141 @@
+# Dashboard Grafana — empacotado como ConfigMap. O sidecar do
+# kube-prometheus-stack (grafana-sc-dashboard) escaneia TODOS os
+# namespaces (NAMESPACE=ALL) procurando ConfigMaps com label
+# `grafana_dashboard: "1"` — não precisa estar em `monitoring`.
+#
+# Painéis (em ordem):
+#   1. RPS por método+rota (Stack)
+#   2. Status families (2xx/4xx/5xx)
+#   3. Latency p50 / p95 / p99 por rota
+#   4. pgxpool — connections (acquired / idle / total / max)
+#   5. pgxpool — empty acquire rate (saturação do pool)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: realtpmsys-grafana-dashboard
+  namespace: realtpmsys
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: "realtpmsys-api"
+    app.kubernetes.io/component: "dashboard"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+  annotations:
+    grafana_folder: "realtpmsys"
+data:
+  realtpmsys-api.json: |
+    {
+      "title": "realtpmsys — API RED + pgxpool",
+      "uid": "realtpmsys-api",
+      "schemaVersion": 38,
+      "version": 1,
+      "tags": ["realtpmsys", "red", "pgx"],
+      "timezone": "browser",
+      "time": {"from": "now-1h", "to": "now"},
+      "refresh": "30s",
+      "templating": {"list": []},
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request rate by route (RPS)",
+          "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "targets": [
+            {
+              "expr": "sum(rate(realtpmsys_http_requests_total{path!=\"unmatched\"}[5m])) by (method, path)",
+              "legendFormat": "{{method}} {{path}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Status families",
+          "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}},
+          "targets": [
+            {
+              "expr": "sum(rate(realtpmsys_http_requests_total{status=~\"2..\"}[5m]))",
+              "legendFormat": "2xx",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(realtpmsys_http_requests_total{status=~\"4..\"}[5m]))",
+              "legendFormat": "4xx",
+              "refId": "B"
+            },
+            {
+              "expr": "sum(rate(realtpmsys_http_requests_total{status=~\"5..\"}[5m]))",
+              "legendFormat": "5xx",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Latency p50 / p95 / p99 por rota (s)",
+          "gridPos": {"x": 0, "y": 8, "w": 24, "h": 9},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(realtpmsys_http_request_duration_seconds_bucket{path!=\"unmatched\"}[5m])) by (le, path))",
+              "legendFormat": "p50 {{path}}",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(realtpmsys_http_request_duration_seconds_bucket{path!=\"unmatched\"}[5m])) by (le, path))",
+              "legendFormat": "p95 {{path}}",
+              "refId": "B"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(realtpmsys_http_request_duration_seconds_bucket{path!=\"unmatched\"}[5m])) by (le, path))",
+              "legendFormat": "p99 {{path}}",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "pgxpool — connections",
+          "gridPos": {"x": 0, "y": 17, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "none"}},
+          "targets": [
+            {"expr": "realtpmsys_pgxpool_acquired_connections", "legendFormat": "acquired", "refId": "A"},
+            {"expr": "realtpmsys_pgxpool_idle_connections",     "legendFormat": "idle",     "refId": "B"},
+            {"expr": "realtpmsys_pgxpool_total_connections",    "legendFormat": "total",    "refId": "C"},
+            {"expr": "realtpmsys_pgxpool_max_connections",      "legendFormat": "max",      "refId": "D"}
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "pgxpool — empty acquire (saturação do pool)",
+          "gridPos": {"x": 12, "y": 17, "w": 12, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "targets": [
+            {
+              "expr": "rate(realtpmsys_pgxpool_empty_acquire_total[5m])",
+              "legendFormat": "empty_acquire/s",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(realtpmsys_pgxpool_canceled_acquire_total[5m])",
+              "legendFormat": "canceled_acquire/s",
+              "refId": "B"
+            }
+          ]
+        }
+      ]
+    }

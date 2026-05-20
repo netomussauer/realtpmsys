@@ -26,6 +26,7 @@ import (
 	infrahttp "github.com/realtpmsys/realtpmsys/internal/infrastructure/http"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/jobs"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/metrics"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/migrate"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/repository"
 )
@@ -82,6 +83,12 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("ping ao banco falhou: %w", err)
 	}
 	logger.Info("banco de dados conectado")
+
+	// Métricas: registra HTTP RED + Collector que lê pgxpool.Stat() a cada
+	// scrape. Tem que vir depois do pool estar pronto. Endpoint /metrics
+	// é exposto pelo router.
+	metrics.MustRegister()
+	metrics.RegisterPoolCollector(pool)
 
 	// Repositories
 	mensalidadeRepo := repository.NewPgxMensalidadeRepository(pool)
