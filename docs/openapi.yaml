@@ -446,6 +446,35 @@ components:
 
 paths:
 
+  # ---- PLATFORM ENDPOINTS ----------------------------------------------------
+
+  /metrics:
+    get:
+      tags: [Plataforma]
+      summary: Métricas Prometheus (HTTP RED + pgxpool)
+      security: []
+      description: |
+        Endpoint scraped pelo `kube-prometheus-stack` via ServiceMonitor.
+        Sem autenticação — exposto apenas via Service ClusterIP (rede interna).
+
+        Famílias de métricas:
+
+        - `realtpmsys_http_requests_total{method,path,status}` — counter
+        - `realtpmsys_http_request_duration_seconds_*{method,path,status}` — histogram
+          (buckets: 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s)
+        - `realtpmsys_pgxpool_*` — acquired/idle/total/max conns + empty/canceled acquire
+
+        Label `path` usa o RoutePattern do chi (ex.: `/api/v1/atletas/{id}`)
+        para conter cardinalidade — paths sem rota associada agregam em
+        `path="unmatched"`. Healthcheck e o próprio /metrics são excluídos
+        do histograma.
+      responses:
+        "200":
+          description: Exposição em formato `text/plain; version=0.0.4` (Prometheus)
+          content:
+            text/plain:
+              schema: { type: string }
+
   # ---- AUTH ------------------------------------------------------------------
 
   /auth/login:

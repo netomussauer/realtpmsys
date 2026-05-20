@@ -131,6 +131,13 @@ make run
 >   `usuarios.id` via `atletas.usuario_responsavel_id` (404 silencioso
 >   quando não bate). Listagem global de atletas continua restrita a
 >   ADMIN+TREINADOR.
+> - **Observabilidade:** `/metrics` (Prometheus) exposto sem auth para
+>   o `kube-prometheus-stack` do lab. Métricas HTTP RED (RPS, erro %,
+>   p50/p95/p99) com label `path = RoutePattern` do chi para conter
+>   cardinalidade; `realtpmsys_pgxpool_*` (acquired/idle/total/max +
+>   empty_acquire e canceled_acquire) sinalizam saturação do pool. Um
+>   `ServiceMonitor` + ConfigMap de dashboard em [infra/k8s/](infra/k8s/)
+>   ficam em sync via ArgoCD.
 > - **Atletas:** CRUD completo em `/api/v1/atletas` (List/Get ADMIN+TREINADOR,
 >   escrita ADMIN). Inclui `PATCH /{id}/inativar`, `/suspender`, `/reativar`.
 > - **Treinadores:** CRUD em `/api/v1/treinadores` (List/Get ADMIN+TREINADOR,

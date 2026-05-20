@@ -1,10 +1,22 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.3.0
+**Versão:** 2.4.0
 **Data:** 2026-05-20
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.3.0 (2026-05-20, manhã):**
+>
+> - **Observabilidade — métricas Prometheus RED + pgxpool.** Antes do
+>   §5.3 era aspiracional ("OpenTelemetry no go.mod, ainda não wireado").
+>   Agora o pod expõe `/metrics` (scrape pelo kube-prometheus-stack do
+>   lab via `ServiceMonitor`), dashboard Grafana auto-descoberto pelo
+>   sidecar. Cobre RPS, erro %, p50/p95/p99 por rota e saturação do
+>   pool pgx. ADR-009 documenta a escolha por *application-layer*
+>   (`promhttp` + collector pgx) sobre OTel SDK nesta primeira leva.
+> - Tracing OTel continua pendente — backend OTLP (Tempo/Jaeger) ainda
+>   não definido no lab; tratado em frente separada.
+>
 > **Mudanças vs v2.2.0 (2026-05-19, tarde):**
 >
 > - **Perfil RESPONSAVEL ponta-a-ponta**: rotas de leitura (`GET /atletas/{id}`,
@@ -180,6 +192,17 @@ flowchart LR
 **Decisão:** A autorização granular do perfil RESPONSAVEL (cada usuário só vê seus próprios atletas e mensalidades) é implementada nos *handlers* + queries sqlc escopadas por `atletas.usuario_responsavel_id`. **Não** é usado Row Level Security (RLS) no PostgreSQL.
 **Razão:** O sistema é monolito e único cliente do banco; a regra de filtro vive numa única camada (Go), sem duplicação. RLS exigiria `SET LOCAL app.current_user` em cada conexão do pool, policies por tabela em SQL, e ainda assim a app continuaria precisando do filtro de "404 silencioso" (RLS sozinho retornaria 0 linhas, mas a *decisão* de virar 404 sem vazar enumeração mora em HTTP). Queries escopadas via `JOIN atletas ON usuario_responsavel_id` aproveitam o `idx_atletas_responsavel` existente.
 **Trade-off:** Sem defesa em profundidade — uma falha de roteamento ou de extração do `user_id` do JWT exporia dados de outros usuários. Mitigação: testes unitários no handler (`authorization_test.go`) e o 404 padrão no router. Revisitar para RLS quando: (a) surgir segundo cliente do mesmo DB, (b) auditoria/compliance exigir, ou (c) extensões `pgRBAC` virarem padrão da equipe.
+
+#### ADR-009 — Métricas via `promhttp` + collector pgxpool, sem OTel SDK na primeira leva *(adicionado em 2026-05-20)*
+
+**Decisão:** A exposição de métricas usa diretamente `prometheus/client_golang` (`promhttp.Handler()`) com:
+
+1. Middleware Chi que grava `realtpmsys_http_requests_total` (counter) e `realtpmsys_http_request_duration_seconds` (histogram) por `method/path/status`, usando o `RoutePattern` do chi como label `path` para conter cardinalidade — paths sem rota associada agregam em `path="unmatched"`.
+2. `prometheus.Collector` que invoca `pgxpool.Pool.Stat()` no `Collect()` (sem goroutine de polling) e expõe acquired/idle/total/max conns e empty_acquire/canceled_acquire — sinaliza saturação do pool.
+
+OpenTelemetry SDK (que já estava no `go.mod` indireto pelo migrate) **não** é usado nesta entrega.
+**Razão:** A stack do lab é kube-prometheus-stack + Grafana sidecar — fala Prometheus nativo. `promhttp` é ~50 LOC de wiring e dispensa Collector, exporter e tradução semântica. OTel adicionaria 3 deps (`otel`, `otel/sdk/metric`, `otel/exporters/prometheus`) e um Provider compartilhado sem entregar nada que o Prometheus puro já não entregue para esta fase. Buckets do histograma (`[5ms..5s]`) são escolhidos para os SLOs do §5.3 — bucket > 5s desperdiça memória sem sinal.
+**Trade-off:** Migrar para OTel depois exigirá refatorar dois pontos: o middleware (instrumenter `otelhttp`) e o collector pgx (substituído por `otelpgx`). Custo previsto: ~2h. Vale a pena somente quando entrar tracing distribuído (frente separada que precisa de backend OTLP — Tempo/Jaeger ainda não decidido no lab) e quisermos correlação de spans com métricas via mesma instrumentação. Para HTTP apenas, o pacote `client_golang` continua aceitável a longo prazo.
 
 ---
 
