@@ -1,10 +1,25 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.2.0
-**Data:** 2026-05-19
+**Versão:** 2.3.0
+**Data:** 2026-05-20
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.2.0 (2026-05-19, tarde):**
+>
+> - **Perfil RESPONSAVEL ponta-a-ponta**: rotas de leitura (`GET /atletas/{id}`,
+>   `/responsaveis`, `/uniforme`, `GET /mensalidades` e `/{id}`) abertas com
+>   filtro/autorização no handler. Endurece o risco *"Acesso de responsável
+>   a dados de outros atletas"* do §6, que era um bug em `GET /mensalidades`
+>   (listava tudo). ADR-008 documenta a escolha de *application-layer
+>   filtering* sobre RLS no Postgres.
+> - 2 queries sqlc novas em `atletas` + 3 em `mensalidades` (todas com
+>   `JOIN` por `usuario_responsavel_id`). Migration `000003` cria o usuário
+>   seed `responsavel@realtpmsys.local` (senha `Test@1234`, bcrypt cost=12)
+>   e vincula 1 atleta existente.
+> - Cobertura: novo `handler/authorization_test.go` cobre dispatch por
+>   perfil e o 404 silencioso de enumeração.
+>
 > **Mudanças vs v2.1.0 (2026-05-19, manhã):**
 >
 > - **Refresh token implementado** — `LoginUseCase` emite par `access` + `refresh`
@@ -159,6 +174,12 @@ flowchart LR
 **Decisão:** Pipeline Tekton no namespace `cicd` builda a imagem com Kaniko (sem Docker daemon) a partir do clone Gitea, publica em Harbor (`harbor.lab.local`) com tag dupla `:latest` + `:sha-<7chars>`.
 **Razão:** Kaniko roda 100% in-cluster — sem necessidade de Docker daemon, sem GitHub Actions externo, sem expor secrets do registry para CI externo. Tekton já estava instalado no lab. Tag `sha-<7chars>` é imutável e permite rollback.
 **Trade-off:** Mirror PULL do Gitea (do GitHub) não dispara webhook nativamente — webhook só funciona em push direto ao Gitea. Workaround atual: invocar EventListener via curl após `mirror-sync` ou disparar PipelineRun manual via `kubectl create`. Para automação completa, ou migrar para Gitea-primary (push reverso pro GitHub) ou rodar CronJob de polling.
+
+#### ADR-008 — Application-layer filtering para perfil RESPONSAVEL *(adicionado em 2026-05-20)*
+
+**Decisão:** A autorização granular do perfil RESPONSAVEL (cada usuário só vê seus próprios atletas e mensalidades) é implementada nos *handlers* + queries sqlc escopadas por `atletas.usuario_responsavel_id`. **Não** é usado Row Level Security (RLS) no PostgreSQL.
+**Razão:** O sistema é monolito e único cliente do banco; a regra de filtro vive numa única camada (Go), sem duplicação. RLS exigiria `SET LOCAL app.current_user` em cada conexão do pool, policies por tabela em SQL, e ainda assim a app continuaria precisando do filtro de "404 silencioso" (RLS sozinho retornaria 0 linhas, mas a *decisão* de virar 404 sem vazar enumeração mora em HTTP). Queries escopadas via `JOIN atletas ON usuario_responsavel_id` aproveitam o `idx_atletas_responsavel` existente.
+**Trade-off:** Sem defesa em profundidade — uma falha de roteamento ou de extração do `user_id` do JWT exporia dados de outros usuários. Mitigação: testes unitários no handler (`authorization_test.go`) e o 404 padrão no router. Revisitar para RLS quando: (a) surgir segundo cliente do mesmo DB, (b) auditoria/compliance exigir, ou (c) extensões `pgRBAC` virarem padrão da equipe.
 
 ---
 

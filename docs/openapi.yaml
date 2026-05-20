@@ -573,6 +573,12 @@ paths:
     get:
       tags: [Atletas]
       summary: Detalhe do atleta com responsáveis e uniforme
+      description: |
+        Aberto para ADMIN, TREINADOR e RESPONSAVEL.
+
+        **RESPONSAVEL** só vê atletas vinculados ao seu `usuario_id`
+        (atletas.usuario_responsavel_id). Acesso a outro atleta retorna
+        **404** silencioso — não vaza enumeração de IDs.
       responses:
         "200":
           description: Atleta encontrado
@@ -583,7 +589,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetail" }
-          description: Não encontrado
+          description: Não encontrado (ou pertence a outro responsável)
     put:
       tags: [Atletas]
       summary: Atualiza dados do atleta
@@ -919,6 +925,13 @@ paths:
     get:
       tags: [Financeiro]
       summary: Lista mensalidades com filtros
+      description: |
+        Aberto para ADMIN e RESPONSAVEL.
+
+        **RESPONSAVEL** recebe apenas mensalidades dos seus atletas
+        (JOIN com `atletas.usuario_responsavel_id`). O parâmetro
+        `atleta_id` é ignorado para este perfil — o filtro forte é o
+        usuário do token. ADMIN vê tudo, respeitando os filtros.
       parameters:
         - name: atleta_id
           in: query
@@ -970,6 +983,11 @@ paths:
     get:
       tags: [Financeiro]
       summary: Detalhe da mensalidade
+      description: |
+        Aberto para ADMIN e RESPONSAVEL.
+
+        **RESPONSAVEL** só vê mensalidades de atletas vinculados a si.
+        Mensalidade alheia retorna **404** silencioso.
       responses:
         "200":
           description: Mensalidade encontrada
@@ -980,7 +998,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetail" }
-          description: Não encontrada
+          description: Não encontrada (ou pertence a atleta de outro responsável)
 
   /mensalidades/{id}/pagar:
     parameters:

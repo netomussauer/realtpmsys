@@ -125,6 +125,12 @@ make run
 > - **Públicos:** `/health`, `POST /auth/login` (retorna par `access_token` + `refresh_token`),
 >   `POST /auth/refresh` (consome `refresh_token` e devolve novo `access_token`;
 >   refresh **não rotaciona** — vide [docs/openapi.yaml](docs/openapi.yaml))
+> - **Perfil RESPONSAVEL** acessa: `GET /atletas/{id}` (e sub-recursos
+>   `/responsaveis` e `/uniforme`), `GET /mensalidades` (lista filtrada)
+>   e `GET /mensalidades/{id}` — todos restritos aos atletas vinculados a
+>   `usuarios.id` via `atletas.usuario_responsavel_id` (404 silencioso
+>   quando não bate). Listagem global de atletas continua restrita a
+>   ADMIN+TREINADOR.
 > - **Atletas:** CRUD completo em `/api/v1/atletas` (List/Get ADMIN+TREINADOR,
 >   escrita ADMIN). Inclui `PATCH /{id}/inativar`, `/suspender`, `/reativar`.
 > - **Treinadores:** CRUD em `/api/v1/treinadores` (List/Get ADMIN+TREINADOR,
