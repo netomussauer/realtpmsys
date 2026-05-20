@@ -42,6 +42,36 @@ func (q *Queries) CountMensalidades(ctx context.Context, arg CountMensalidadesPa
 	return count, err
 }
 
+const countMensalidadesPorResponsavel = `-- name: CountMensalidadesPorResponsavel :one
+SELECT COUNT(*)
+FROM   mensalidades m
+JOIN   atletas a ON a.id = m.atleta_id
+WHERE  a.usuario_responsavel_id  = $1
+  AND  a.deletado_em             IS NULL
+  AND ($2::text   IS NULL OR m.status::text    = $2)
+  AND ($3::int  IS NULL OR m.competencia_ano = $3)
+  AND ($4::int  IS NULL OR m.competencia_mes = $4)
+`
+
+type CountMensalidadesPorResponsavelParams struct {
+	UsuarioResponsavelID *uuid.UUID `db:"usuario_responsavel_id" json:"usuario_responsavel_id"`
+	Status               *string    `db:"status" json:"status"`
+	CompAno              *int32     `db:"comp_ano" json:"comp_ano"`
+	CompMes              *int32     `db:"comp_mes" json:"comp_mes"`
+}
+
+func (q *Queries) CountMensalidadesPorResponsavel(ctx context.Context, arg CountMensalidadesPorResponsavelParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countMensalidadesPorResponsavel,
+		arg.UsuarioResponsavelID,
+		arg.Status,
+		arg.CompAno,
+		arg.CompMes,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getMensalidadeByContratoCompetencia = `-- name: GetMensalidadeByContratoCompetencia :one
 SELECT id, contrato_id, atleta_id, competencia_ano, competencia_mes, data_vencimento, valor, valor_pago, status, data_pagamento, forma_pagamento, observacao, criado_em, atualizado_em
 FROM mensalidades
@@ -86,6 +116,45 @@ WHERE id = $1
 
 func (q *Queries) GetMensalidadeByID(ctx context.Context, id uuid.UUID) (Mensalidade, error) {
 	row := q.db.QueryRow(ctx, getMensalidadeByID, id)
+	var i Mensalidade
+	err := row.Scan(
+		&i.ID,
+		&i.ContratoID,
+		&i.AtletaID,
+		&i.CompetenciaAno,
+		&i.CompetenciaMes,
+		&i.DataVencimento,
+		&i.Valor,
+		&i.ValorPago,
+		&i.Status,
+		&i.DataPagamento,
+		&i.FormaPagamento,
+		&i.Observacao,
+		&i.CriadoEm,
+		&i.AtualizadoEm,
+	)
+	return i, err
+}
+
+const getMensalidadeByIDPorResponsavel = `-- name: GetMensalidadeByIDPorResponsavel :one
+SELECT m.id, m.contrato_id, m.atleta_id, m.competencia_ano, m.competencia_mes, m.data_vencimento, m.valor, m.valor_pago, m.status, m.data_pagamento, m.forma_pagamento, m.observacao, m.criado_em, m.atualizado_em
+FROM   mensalidades m
+JOIN   atletas a ON a.id = m.atleta_id
+WHERE  m.id                      = $1
+  AND  a.usuario_responsavel_id  = $2
+  AND  a.deletado_em             IS NULL
+`
+
+type GetMensalidadeByIDPorResponsavelParams struct {
+	ID                   uuid.UUID  `db:"id" json:"id"`
+	UsuarioResponsavelID *uuid.UUID `db:"usuario_responsavel_id" json:"usuario_responsavel_id"`
+}
+
+// Versão escopada do GetMensalidadeByID — devolve linha apenas se o atleta
+// da mensalidade pertencer ao usuário responsável informado. Usada pelo
+// handler quando perfil=RESPONSAVEL (404 silencioso quando não bate).
+func (q *Queries) GetMensalidadeByIDPorResponsavel(ctx context.Context, arg GetMensalidadeByIDPorResponsavelParams) (Mensalidade, error) {
+	row := q.db.QueryRow(ctx, getMensalidadeByIDPorResponsavel, arg.ID, arg.UsuarioResponsavelID)
 	var i Mensalidade
 	err := row.Scan(
 		&i.ID,
@@ -185,6 +254,74 @@ type ListMensalidadesParams struct {
 func (q *Queries) ListMensalidades(ctx context.Context, arg ListMensalidadesParams) ([]Mensalidade, error) {
 	rows, err := q.db.Query(ctx, listMensalidades,
 		arg.AtletaID,
+		arg.Status,
+		arg.CompAno,
+		arg.CompMes,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Mensalidade{}
+	for rows.Next() {
+		var i Mensalidade
+		if err := rows.Scan(
+			&i.ID,
+			&i.ContratoID,
+			&i.AtletaID,
+			&i.CompetenciaAno,
+			&i.CompetenciaMes,
+			&i.DataVencimento,
+			&i.Valor,
+			&i.ValorPago,
+			&i.Status,
+			&i.DataPagamento,
+			&i.FormaPagamento,
+			&i.Observacao,
+			&i.CriadoEm,
+			&i.AtualizadoEm,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMensalidadesPorResponsavel = `-- name: ListMensalidadesPorResponsavel :many
+SELECT m.id, m.contrato_id, m.atleta_id, m.competencia_ano, m.competencia_mes, m.data_vencimento, m.valor, m.valor_pago, m.status, m.data_pagamento, m.forma_pagamento, m.observacao, m.criado_em, m.atualizado_em
+FROM   mensalidades m
+JOIN   atletas a ON a.id = m.atleta_id
+WHERE  a.usuario_responsavel_id  = $1
+  AND  a.deletado_em             IS NULL
+  AND ($2::text   IS NULL OR m.status::text     = $2)
+  AND ($3::int  IS NULL OR m.competencia_ano  = $3)
+  AND ($4::int  IS NULL OR m.competencia_mes  = $4)
+ORDER BY m.data_vencimento
+LIMIT  $6
+OFFSET $5
+`
+
+type ListMensalidadesPorResponsavelParams struct {
+	UsuarioResponsavelID *uuid.UUID `db:"usuario_responsavel_id" json:"usuario_responsavel_id"`
+	Status               *string    `db:"status" json:"status"`
+	CompAno              *int32     `db:"comp_ano" json:"comp_ano"`
+	CompMes              *int32     `db:"comp_mes" json:"comp_mes"`
+	Off                  int32      `db:"off" json:"off"`
+	Lim                  int32      `db:"lim" json:"lim"`
+}
+
+// Lista mensalidades dos atletas vinculados ao usuário responsável.
+// Mesmos filtros opcionais do ListMensalidades, mas SEM o filtro por
+// atleta_id (o filtro forte é o usuario_responsavel_id).
+func (q *Queries) ListMensalidadesPorResponsavel(ctx context.Context, arg ListMensalidadesPorResponsavelParams) ([]Mensalidade, error) {
+	rows, err := q.db.Query(ctx, listMensalidadesPorResponsavel,
+		arg.UsuarioResponsavelID,
 		arg.Status,
 		arg.CompAno,
 		arg.CompMes,

@@ -106,6 +106,73 @@ func (r *PgxMensalidadeRepository) List(
 	return result, total, nil
 }
 
+// GetByIDPorResponsavel devolve a mensalidade apenas se o atleta dela
+// pertencer ao usuário responsável informado. Retorna (nil, nil) sem erro
+// quando não bate — handler converte em 404 sem vazar existência.
+func (r *PgxMensalidadeRepository) GetByIDPorResponsavel(
+	ctx context.Context, id, usuarioResponsavelID uuid.UUID,
+) (*financeiro.Mensalidade, error) {
+	row, err := r.queries.GetMensalidadeByIDPorResponsavel(ctx, sqlcgen.GetMensalidadeByIDPorResponsavelParams{
+		ID:                   id,
+		UsuarioResponsavelID: &usuarioResponsavelID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetMensalidadeByIDPorResponsavel: %w", err)
+	}
+	return toMensalidadeEntity(row), nil
+}
+
+// ListPorResponsavel retorna mensalidades dos atletas vinculados ao
+// usuário responsável. Honra filtros de status e competência; AtletaID
+// no filter é ignorado (o filtro forte é o usuário).
+func (r *PgxMensalidadeRepository) ListPorResponsavel(
+	ctx context.Context, usuarioResponsavelID uuid.UUID, f financeiro.MensalidadeFilter,
+) ([]*financeiro.Mensalidade, int64, error) {
+	page, perPage := normalizePagination(f.Page, f.PerPage)
+
+	params := sqlcgen.ListMensalidadesPorResponsavelParams{
+		UsuarioResponsavelID: &usuarioResponsavelID,
+		Lim:                  int32(perPage),
+		Off:                  int32((page - 1) * perPage),
+	}
+	if f.Status != nil {
+		s := string(*f.Status)
+		params.Status = &s
+	}
+	if f.CompetenciaAno != nil {
+		v := int32(*f.CompetenciaAno)
+		params.CompAno = &v
+	}
+	if f.CompetenciaMes != nil {
+		v := int32(*f.CompetenciaMes)
+		params.CompMes = &v
+	}
+
+	rows, err := r.queries.ListMensalidadesPorResponsavel(ctx, params)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ListMensalidadesPorResponsavel: %w", err)
+	}
+
+	total, err := r.queries.CountMensalidadesPorResponsavel(ctx, sqlcgen.CountMensalidadesPorResponsavelParams{
+		UsuarioResponsavelID: params.UsuarioResponsavelID,
+		Status:               params.Status,
+		CompAno:              params.CompAno,
+		CompMes:              params.CompMes,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("CountMensalidadesPorResponsavel: %w", err)
+	}
+
+	result := make([]*financeiro.Mensalidade, len(rows))
+	for i, row := range rows {
+		result[i] = toMensalidadeEntity(row)
+	}
+	return result, total, nil
+}
+
 // Save persiste uma mensalidade (insert ou update por ID).
 func (r *PgxMensalidadeRepository) Save(ctx context.Context, m *financeiro.Mensalidade) error {
 	if m.Status == financeiro.MensalidadePago && m.ValorPago != nil {

@@ -35,6 +35,31 @@ func (r *PgxAtletaRepository) GetByID(ctx context.Context, id uuid.UUID) (*atlet
 	return toAtletaEntity(row), nil
 }
 
+func (r *PgxAtletaRepository) GetByIDPorResponsavel(ctx context.Context, id, usuarioResponsavelID uuid.UUID) (*atleta.Atleta, error) {
+	row, err := r.queries.GetAtletaByIDPorResponsavel(ctx, sqlcgen.GetAtletaByIDPorResponsavelParams{
+		ID:                   id,
+		UsuarioResponsavelID: &usuarioResponsavelID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetAtletaByIDPorResponsavel: %w", err)
+	}
+	return toAtletaEntity(row), nil
+}
+
+func (r *PgxAtletaRepository) IsAtletaDoResponsavel(ctx context.Context, atletaID, usuarioResponsavelID uuid.UUID) (bool, error) {
+	ok, err := r.queries.IsAtletaDoResponsavel(ctx, sqlcgen.IsAtletaDoResponsavelParams{
+		ID:                   atletaID,
+		UsuarioResponsavelID: &usuarioResponsavelID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("IsAtletaDoResponsavel: %w", err)
+	}
+	return ok, nil
+}
+
 func (r *PgxAtletaRepository) GetByCPF(ctx context.Context, cpf string) (*atleta.Atleta, error) {
 	row, err := r.queries.GetAtletaByCPF(ctx, &cpf)
 	if err != nil {

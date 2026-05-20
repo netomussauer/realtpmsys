@@ -24,8 +24,16 @@ type ContratoRepository interface {
 // MensalidadeRepository é o Port para persistência de Mensalidades.
 type MensalidadeRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Mensalidade, error)
+	// GetByIDPorResponsavel devolve a mensalidade apenas se o atleta dela
+	// pertencer ao usuário responsável informado (atletas.usuario_responsavel_id
+	// = $2). Retorna (nil, nil) sem erro quando não bate — handler converte
+	// em 404 sem vazar existência.
+	GetByIDPorResponsavel(ctx context.Context, id, usuarioResponsavelID uuid.UUID) (*Mensalidade, error)
 	GetByContratoCompetencia(ctx context.Context, contratoID uuid.UUID, ano, mes int) (*Mensalidade, error)
 	List(ctx context.Context, filter MensalidadeFilter) ([]*Mensalidade, int64, error)
+	// ListPorResponsavel é a versão escopada do List: ignora filter.AtletaID
+	// (o filtro forte é o usuário responsável) mas honra Status/Competencia.
+	ListPorResponsavel(ctx context.Context, usuarioResponsavelID uuid.UUID, filter MensalidadeFilter) ([]*Mensalidade, int64, error)
 	Save(ctx context.Context, mensalidade *Mensalidade) error
 	SaveBatch(ctx context.Context, mensalidades []*Mensalidade) error
 	// MarcarVencidas faz UPDATE em massa: PENDENTE → VENCIDO para

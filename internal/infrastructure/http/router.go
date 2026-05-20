@@ -57,10 +57,16 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 
 		// Atletas
 		r.Route("/atletas", func(r chi.Router) {
-			// Leituras liberadas para ADMIN e TREINADOR
+			// Listagem só ADMIN e TREINADOR — RESPONSAVEL não enumera atletas.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR"))
 				r.Get("/", h.Atleta.List)
+			})
+			// Detalhe/sub-recursos: RESPONSAVEL acessa apenas atletas vinculados
+			// a si. Os handlers fazem o filtro por usuario_responsavel_id e
+			// devolvem 404 quando não bate (não vaza enumeração de IDs).
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR", "RESPONSAVEL"))
 				r.Get("/{id}", h.Atleta.GetByID)
 				r.Get("/{id}/responsaveis", h.Responsavel.ListPorAtleta)
 				r.Get("/{id}/uniforme", h.Responsavel.GetUniforme)
@@ -179,12 +185,15 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 		// Mensalidades
 		r.Route("/mensalidades", func(r chi.Router) {
 			r.Use(middleware.RequirePerfil("ADMIN", "RESPONSAVEL"))
+			// Leituras: ADMIN vê tudo, RESPONSAVEL filtrado pelo handler
+			// (List ⇒ ListPorResponsavel, GetByID ⇒ GetByIDPorResponsavel/404).
 			r.Get("/", h.Mensalidade.List)
+			r.Get("/{id}", h.Mensalidade.GetByID)
 
+			// Escritas (gerar, pagar, cancelar) seguem só ADMIN.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequirePerfil("ADMIN"))
 				r.Post("/gerar", h.Mensalidade.Gerar)
-				r.Get("/{id}", h.Mensalidade.GetByID)
 				r.Patch("/{id}/pagar", h.Mensalidade.Pagar)
 				r.Patch("/{id}/cancelar", h.Mensalidade.Cancelar)
 			})

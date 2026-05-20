@@ -55,7 +55,20 @@ func (h *MensalidadeHandler) List(w http.ResponseWriter, r *http.Request) {
 		filter.Status = &s
 	}
 
-	mensalidades, total, err := h.mensalidadeRepo.List(r.Context(), filter)
+	// RESPONSAVEL só enxerga mensalidades de atletas vinculados a si.
+	// O ListPorResponsavel ignora filter.AtletaID (o filtro forte é o
+	// usuário); honra status/competência.
+	userID, perfil, _ := authContext(r.Context())
+	var (
+		mensalidades []*financeiro.Mensalidade
+		total        int64
+		err          error
+	)
+	if perfil == PerfilResponsavel {
+		mensalidades, total, err = h.mensalidadeRepo.ListPorResponsavel(r.Context(), userID, filter)
+	} else {
+		mensalidades, total, err = h.mensalidadeRepo.List(r.Context(), filter)
+	}
 	if err != nil {
 		response.WriteError(w, r, err)
 		return
@@ -81,7 +94,14 @@ func (h *MensalidadeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, r, err)
 		return
 	}
-	m, err := h.mensalidadeRepo.GetByID(r.Context(), id)
+
+	userID, perfil, _ := authContext(r.Context())
+	var m *financeiro.Mensalidade
+	if perfil == PerfilResponsavel {
+		m, err = h.mensalidadeRepo.GetByIDPorResponsavel(r.Context(), id, userID)
+	} else {
+		m, err = h.mensalidadeRepo.GetByID(r.Context(), id)
+	}
 	if err != nil {
 		response.WriteError(w, r, err)
 		return

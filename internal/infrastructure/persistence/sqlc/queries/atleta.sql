@@ -4,6 +4,28 @@ FROM atletas
 WHERE id = $1
   AND deletado_em IS NULL;
 
+-- name: GetAtletaByIDPorResponsavel :one
+-- Versão escopada do GetAtletaByID — devolve linha apenas se o atleta
+-- pertencer ao usuário responsável informado. Usada para autorizar GETs
+-- vindos do perfil RESPONSAVEL (404 silencioso quando não bate).
+SELECT *
+FROM atletas
+WHERE id                     = $1
+  AND usuario_responsavel_id = $2
+  AND deletado_em            IS NULL;
+
+-- name: IsAtletaDoResponsavel :one
+-- Sentinela barata para rotas que precisam autorizar mas não usam a linha
+-- do atleta em si (ex.: /responsaveis, /uniforme). Devolve TRUE se o atleta
+-- ATIVO/INATIVO/SUSPENSO existir e pertencer ao responsável.
+SELECT EXISTS(
+    SELECT 1
+    FROM   atletas
+    WHERE  id                     = $1
+      AND  usuario_responsavel_id = $2
+      AND  deletado_em            IS NULL
+);
+
 -- name: GetAtletaByCPF :one
 SELECT *
 FROM atletas

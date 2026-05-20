@@ -10,6 +10,15 @@ import (
 // A implementação concreta fica em internal/infrastructure/persistence/repository.
 type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Atleta, error)
+	// GetByIDPorResponsavel devolve o atleta apenas se ele pertencer ao
+	// usuário responsável informado. Usado pelo handler quando
+	// perfil=RESPONSAVEL — retorna (nil, nil) sem erro quando não bate
+	// (handler converte em 404, sem vazar existência).
+	GetByIDPorResponsavel(ctx context.Context, id uuid.UUID, usuarioResponsavelID uuid.UUID) (*Atleta, error)
+	// IsAtletaDoResponsavel responde a pergunta de autorização barata para
+	// rotas que verificam pertinência mas não carregam a linha (ex.:
+	// /atletas/{id}/responsaveis, /atletas/{id}/uniforme).
+	IsAtletaDoResponsavel(ctx context.Context, atletaID, usuarioResponsavelID uuid.UUID) (bool, error)
 	GetByCPF(ctx context.Context, cpf string) (*Atleta, error)
 	List(ctx context.Context, filter ListFilter) ([]*Atleta, int64, error)
 	Save(ctx context.Context, atleta *Atleta) error

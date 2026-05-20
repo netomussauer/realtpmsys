@@ -3,6 +3,43 @@ SELECT *
 FROM mensalidades
 WHERE id = $1;
 
+-- name: GetMensalidadeByIDPorResponsavel :one
+-- Versão escopada do GetMensalidadeByID — devolve linha apenas se o atleta
+-- da mensalidade pertencer ao usuário responsável informado. Usada pelo
+-- handler quando perfil=RESPONSAVEL (404 silencioso quando não bate).
+SELECT m.*
+FROM   mensalidades m
+JOIN   atletas a ON a.id = m.atleta_id
+WHERE  m.id                      = $1
+  AND  a.usuario_responsavel_id  = $2
+  AND  a.deletado_em             IS NULL;
+
+-- name: ListMensalidadesPorResponsavel :many
+-- Lista mensalidades dos atletas vinculados ao usuário responsável.
+-- Mesmos filtros opcionais do ListMensalidades, mas SEM o filtro por
+-- atleta_id (o filtro forte é o usuario_responsavel_id).
+SELECT m.*
+FROM   mensalidades m
+JOIN   atletas a ON a.id = m.atleta_id
+WHERE  a.usuario_responsavel_id  = sqlc.arg(usuario_responsavel_id)
+  AND  a.deletado_em             IS NULL
+  AND (sqlc.narg(status)::text   IS NULL OR m.status::text     = sqlc.narg(status))
+  AND (sqlc.narg(comp_ano)::int  IS NULL OR m.competencia_ano  = sqlc.narg(comp_ano))
+  AND (sqlc.narg(comp_mes)::int  IS NULL OR m.competencia_mes  = sqlc.narg(comp_mes))
+ORDER BY m.data_vencimento
+LIMIT  sqlc.arg(lim)
+OFFSET sqlc.arg(off);
+
+-- name: CountMensalidadesPorResponsavel :one
+SELECT COUNT(*)
+FROM   mensalidades m
+JOIN   atletas a ON a.id = m.atleta_id
+WHERE  a.usuario_responsavel_id  = sqlc.arg(usuario_responsavel_id)
+  AND  a.deletado_em             IS NULL
+  AND (sqlc.narg(status)::text   IS NULL OR m.status::text    = sqlc.narg(status))
+  AND (sqlc.narg(comp_ano)::int  IS NULL OR m.competencia_ano = sqlc.narg(comp_ano))
+  AND (sqlc.narg(comp_mes)::int  IS NULL OR m.competencia_mes = sqlc.narg(comp_mes));
+
 -- name: GetMensalidadeByContratoCompetencia :one
 SELECT *
 FROM mensalidades

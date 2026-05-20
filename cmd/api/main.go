@@ -149,7 +149,7 @@ func run(logger *slog.Logger) error {
 	handlers := infrahttp.Handlers{
 		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
-		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo),
+		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo, atletaRepo),
 		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),
 		Campo:       handler.NewCampoHandler(criarCampo, atualizarCampo, toggleCampo, campoRepo),
 		Turma:       handler.NewTurmaHandler(criarTurma, atualizarTurma, mudarStatusTurma, matricularAtleta, cancelarMatricula, turmaRepo, matriculaRepo),

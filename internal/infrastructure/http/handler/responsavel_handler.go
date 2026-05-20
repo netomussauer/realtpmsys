@@ -19,6 +19,9 @@ type ResponsavelHandler struct {
 	setUniforme  *appatleta.SetUniformeUseCase
 	respRepo     domainatleta.ResponsavelRepository
 	uniformeRepo domainatleta.UniformeRepository
+	// atletaRepo é usado para autorizar acessos de perfil RESPONSAVEL em
+	// rotas sub-recurso (/atletas/{id}/responsaveis, /atletas/{id}/uniforme).
+	atletaRepo domainatleta.Repository
 }
 
 func NewResponsavelHandler(
@@ -28,6 +31,7 @@ func NewResponsavelHandler(
 	setUniforme *appatleta.SetUniformeUseCase,
 	respRepo domainatleta.ResponsavelRepository,
 	uniformeRepo domainatleta.UniformeRepository,
+	atletaRepo domainatleta.Repository,
 ) *ResponsavelHandler {
 	return &ResponsavelHandler{
 		adicionar:    adicionar,
@@ -36,7 +40,28 @@ func NewResponsavelHandler(
 		setUniforme:  setUniforme,
 		respRepo:     respRepo,
 		uniformeRepo: uniformeRepo,
+		atletaRepo:   atletaRepo,
 	}
+}
+
+// ensureAcessoAoAtleta retorna true se o caller pode acessar o atleta;
+// para perfil RESPONSAVEL exige IsAtletaDoResponsavel. Quando retorna false
+// já gravou 404 na response — chamador deve apenas dar return.
+func (h *ResponsavelHandler) ensureAcessoAoAtleta(w http.ResponseWriter, r *http.Request, atletaID uuid.UUID) bool {
+	userID, perfil, _ := authContext(r.Context())
+	if perfil != PerfilResponsavel {
+		return true
+	}
+	ok, err := h.atletaRepo.IsAtletaDoResponsavel(r.Context(), atletaID, userID)
+	if err != nil {
+		response.WriteError(w, r, err)
+		return false
+	}
+	if !ok {
+		http.NotFound(w, r)
+		return false
+	}
+	return true
 }
 
 // ─── POST /atletas/{id}/responsaveis ────────────────────────────────────────
@@ -74,6 +99,9 @@ func (h *ResponsavelHandler) ListPorAtleta(w http.ResponseWriter, r *http.Reques
 	atletaID, err := parseUUID(r, "id")
 	if err != nil {
 		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "id do atleta inválido"})
+		return
+	}
+	if !h.ensureAcessoAoAtleta(w, r, atletaID) {
 		return
 	}
 	rows, err := h.respRepo.ListByAtleta(r.Context(), atletaID)
@@ -164,6 +192,9 @@ func (h *ResponsavelHandler) GetUniforme(w http.ResponseWriter, r *http.Request)
 	atletaID, err := parseUUID(r, "id")
 	if err != nil {
 		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "id do atleta inválido"})
+		return
+	}
+	if !h.ensureAcessoAoAtleta(w, r, atletaID) {
 		return
 	}
 	u, err := h.uniformeRepo.GetByAtleta(r.Context(), atletaID)

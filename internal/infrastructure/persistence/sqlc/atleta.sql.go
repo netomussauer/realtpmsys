@@ -94,6 +94,71 @@ func (q *Queries) GetAtletaByID(ctx context.Context, id uuid.UUID) (Atleta, erro
 	return i, err
 }
 
+const getAtletaByIDPorResponsavel = `-- name: GetAtletaByIDPorResponsavel :one
+SELECT id, nome, data_nascimento, cpf, rg, endereco, cidade, uf, cep, email, telefone, status, usuario_responsavel_id, criado_em, atualizado_em, deletado_em
+FROM atletas
+WHERE id                     = $1
+  AND usuario_responsavel_id = $2
+  AND deletado_em            IS NULL
+`
+
+type GetAtletaByIDPorResponsavelParams struct {
+	ID                   uuid.UUID  `db:"id" json:"id"`
+	UsuarioResponsavelID *uuid.UUID `db:"usuario_responsavel_id" json:"usuario_responsavel_id"`
+}
+
+// Versão escopada do GetAtletaByID — devolve linha apenas se o atleta
+// pertencer ao usuário responsável informado. Usada para autorizar GETs
+// vindos do perfil RESPONSAVEL (404 silencioso quando não bate).
+func (q *Queries) GetAtletaByIDPorResponsavel(ctx context.Context, arg GetAtletaByIDPorResponsavelParams) (Atleta, error) {
+	row := q.db.QueryRow(ctx, getAtletaByIDPorResponsavel, arg.ID, arg.UsuarioResponsavelID)
+	var i Atleta
+	err := row.Scan(
+		&i.ID,
+		&i.Nome,
+		&i.DataNascimento,
+		&i.Cpf,
+		&i.Rg,
+		&i.Endereco,
+		&i.Cidade,
+		&i.Uf,
+		&i.Cep,
+		&i.Email,
+		&i.Telefone,
+		&i.Status,
+		&i.UsuarioResponsavelID,
+		&i.CriadoEm,
+		&i.AtualizadoEm,
+		&i.DeletadoEm,
+	)
+	return i, err
+}
+
+const isAtletaDoResponsavel = `-- name: IsAtletaDoResponsavel :one
+SELECT EXISTS(
+    SELECT 1
+    FROM   atletas
+    WHERE  id                     = $1
+      AND  usuario_responsavel_id = $2
+      AND  deletado_em            IS NULL
+)
+`
+
+type IsAtletaDoResponsavelParams struct {
+	ID                   uuid.UUID  `db:"id" json:"id"`
+	UsuarioResponsavelID *uuid.UUID `db:"usuario_responsavel_id" json:"usuario_responsavel_id"`
+}
+
+// Sentinela barata para rotas que precisam autorizar mas não usam a linha
+// do atleta em si (ex.: /responsaveis, /uniforme). Devolve TRUE se o atleta
+// ATIVO/INATIVO/SUSPENSO existir e pertencer ao responsável.
+func (q *Queries) IsAtletaDoResponsavel(ctx context.Context, arg IsAtletaDoResponsavelParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isAtletaDoResponsavel, arg.ID, arg.UsuarioResponsavelID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listAtletas = `-- name: ListAtletas :many
 SELECT id, nome, data_nascimento, cpf, rg, endereco, cidade, uf, cep, email, telefone, status, usuario_responsavel_id, criado_em, atualizado_em, deletado_em
 FROM atletas

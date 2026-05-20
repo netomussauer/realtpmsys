@@ -108,7 +108,16 @@ func (h *AtletaHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "id inválido"})
 		return
 	}
-	a, err := h.repo.GetByID(r.Context(), id)
+
+	// Perfil RESPONSAVEL só enxerga atletas vinculados a si próprio.
+	// Resposta deliberadamente igual a "não existe" para não vazar enumeração.
+	userID, perfil, _ := authContext(r.Context())
+	var a *domainatleta.Atleta
+	if perfil == PerfilResponsavel {
+		a, err = h.repo.GetByIDPorResponsavel(r.Context(), id, userID)
+	} else {
+		a, err = h.repo.GetByID(r.Context(), id)
+	}
 	if err != nil {
 		response.WriteError(w, r, err)
 		return
