@@ -1,10 +1,20 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.5.0
+**Versão:** 2.6.0
 **Data:** 2026-05-22
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.5.0 (2026-05-22, auto-rollout):**
+>
+> - **Testes de integração contra Postgres real**: 5 dos 14 repositories ganham
+>   cobertura usando o `shared-infra` do lab + DB dedicado `realtpmsys_test`.
+>   Escopo Pareto: cobre os repos onde transação ou JOIN concentram risco
+>   (Atleta, Responsavel swap principal, Mensalidade JOINs+SaveBatch, Turma
+>   agregado em tx, Frequencia upsert idempotente). Os 9 restantes ficam
+>   para segunda leva. Build tag `//go:build integration` + setup via
+>   targets Makefile `db/test-setup` + `db/test-portforward`.
+>
 > **Mudanças vs v2.4.0 (2026-05-20, observabilidade):**
 >
 > - **Auto-rollout pós-build (ADR-010)**: pipeline Tekton ganha task inline

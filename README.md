@@ -178,7 +178,9 @@ make test/coverage
 # Com race detector (requer CGO_ENABLED=1)
 make test/race
 
-# Integração — requer DB_URL_TEST e -tags integration
+# Integração — usa Postgres do shared-infra (lab K3s); -tags integration
+make db/test-setup        # uma vez por workstation: cria user/db no lab
+make db/test-portforward  # uma vez por sessão: port-forward 5432:5432
 make test/integration
 ```
 
@@ -195,13 +197,19 @@ make test/integration
 | `internal/application/relatorio` | **100%** |
 | `internal/application/identidade` | **fluxos Login + Refresh + emissão de token** |
 | `internal/infrastructure/http/middleware` | **Audit (níveis + captura de user_id) + Auth** |
+| `internal/infrastructure/persistence/repository` (5 de 14) | **Integração com Postgres real** — Atleta, Responsavel (tx swap), Mensalidade (JOINs+SaveBatch), Turma (agregado em tx), Frequencia (upsert) |
 
 Estratégia: table-driven tests cobrindo regras de negócio puras (máquinas
 de estado, validações, cálculo de idade, taxa de presença, datas de
 vencimento em borda — fevereiro bissexto, abril com 30 dias) e fakes para
 ports (`identidade.Repository`) nos casos de uso. Middleware testado via
-`httptest.Server` com asserts sobre o JSON emitido pelo `slog`. Sem mocks
-de banco real — repositories ficam para testes de integração quando vierem.
+`httptest.Server` com asserts sobre o JSON emitido pelo `slog`.
+
+Testes de integração (`//go:build integration`) rodam contra o postgres
+do `shared-infra` no lab — DB `realtpmsys_test`. Setup via
+`make db/test-setup` + `make db/test-portforward` + `make test/integration`.
+Cobre os 5 repos críticos onde transação ou JOIN são bug-prone; os 9
+restantes ficam para segunda leva.
 
 ---
 
