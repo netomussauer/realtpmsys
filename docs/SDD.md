@@ -1,10 +1,25 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.7.0
+**Versão:** 2.8.0
 **Data:** 2026-05-22
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.7.0 (2026-05-22, pg_stat_statements):**
+>
+> - **Cobertura de integration tests fechada**: os 9 repos restantes
+>   (Plano, Contrato, Campo, Treinador, Usuario, Uniforme, Treino,
+>   Matricula, Relatorio) ganham testes integrados — 14 de 14 repos com
+>   cobertura. Smoke via Job efêmero `golang:1.24` in-cluster: **55 testes
+>   PASS em 130s**.
+> - Iterações revelaram comportamentos não-documentados que entraram para
+>   o registro dos próprios testes: `TreinoRepository.Save` é upsert por
+>   `(turma_id, data_treino)` (não INSERT estrito — detecção de duplicidade
+>   fica no CriarTreinoUseCase via GetByTurmaData); CHECK constraints
+>   `chk_contrato_datas` e `chk_matricula_datas` exigem `data_fim >
+>   data_inicio` (estrito, não `>=`) — testes ajustados para data_inicio
+>   no passado.
+>
 > **Mudanças vs v2.6.0 (2026-05-22, integration tests):**
 >
 > - **Observabilidade de DB via `pg_stat_statements`** (ADR-011): extensão

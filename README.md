@@ -204,7 +204,7 @@ make test/integration
 | `internal/application/relatorio` | **100%** |
 | `internal/application/identidade` | **fluxos Login + Refresh + emissão de token** |
 | `internal/infrastructure/http/middleware` | **Audit (níveis + captura de user_id) + Auth** |
-| `internal/infrastructure/persistence/repository` (5 de 14) | **Integração com Postgres real** — Atleta, Responsavel (tx swap), Mensalidade (JOINs+SaveBatch), Turma (agregado em tx), Frequencia (upsert) |
+| `internal/infrastructure/persistence/repository` (**14 de 14**) | **Integração com Postgres real** — todos os repos: Atleta, Responsavel (tx swap), Mensalidade (JOINs+SaveBatch+MarcarVencidas), Turma (agregado em tx), Frequencia (upsert), Plano, Contrato (uq parcial ATIVO), Campo, Treinador (uq usuario_id + SoftDelete), Usuario (uq email), Uniforme (upsert), Treino (upsert por turma+data), Matricula (uq parcial ATIVA), Relatorio (JOINs + agregação) |
 
 Estratégia: table-driven tests cobrindo regras de negócio puras (máquinas
 de estado, validações, cálculo de idade, taxa de presença, datas de
