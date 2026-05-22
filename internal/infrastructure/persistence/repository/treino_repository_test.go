@@ -64,9 +64,15 @@ func TestTreinoRepository_GetByTurmaData(t *testing.T) {
 	})
 }
 
-// TestTreinoRepository_UniqueTurmaData — uq_treino_turma_data impede 2
-// treinos na mesma turma na mesma data. Garantia básica de domínio.
-func TestTreinoRepository_UniqueTurmaData(t *testing.T) {
+// TestTreinoRepository_Save_UpsertPorTurmaData documenta o comportamento
+// intencional: o Save usa `ON CONFLICT (turma_id, data_treino) DO UPDATE`
+// no SQL — não é INSERT estrito. Salvar 2 treinos com mesma (turma, data)
+// atualiza o existente em vez de falhar. A detecção de duplicidade fica
+// no CriarTreinoUseCase via `GetByTurmaData` (vide domain/frequencia).
+//
+// Cobre essa premissa para evitar regressão: se algum dia o Save trocar
+// pra INSERT estrito sem mexer no use case, este teste pega.
+func TestTreinoRepository_Save_UpsertPorTurmaData(t *testing.T) {
 	pool := setupTestDB(t)
 	truncateAll(t, pool)
 	turmaRepo := NewPgxTurmaRepository(pool)
@@ -80,9 +86,23 @@ func TestTreinoRepository_UniqueTurmaData(t *testing.T) {
 	tr1, _ := domfreq.NewTreino(tu.ID, data)
 	require.NoError(t, treinoRepo.Save(ctx, tr1))
 
+	// 2º Save com mesma turma+data mas ID novo — espera-se silêncio (upsert),
+	// não erro.
 	tr2, _ := domfreq.NewTreino(tu.ID, data)
-	err := treinoRepo.Save(ctx, tr2)
-	require.Error(t, err, "DB deve rejeitar 2 treinos na mesma turma+data")
+	require.NoError(t, treinoRepo.Save(ctx, tr2),
+		"Save é upsert via ON CONFLICT (turma_id, data_treino); não pode falhar")
+
+	// Sanity: só uma linha persistida — a do primeiro Save (o ID do tr2
+	// é descartado, o UPDATE manteve o row de tr1).
+	di := data.AddDate(0, 0, -1)
+	df := data.AddDate(0, 0, 1)
+	rows, total, err := treinoRepo.ListPorTurma(ctx, tu.ID, domfreq.TreinoListFilter{
+		DataInicio: &di, DataFim: &df, Page: 1, PerPage: 10,
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total, "upsert mantém 1 só registro pra (turma,data)")
+	require.Len(t, rows, 1)
+	assert.Equal(t, tr1.ID, rows[0].ID, "ID do INSERT original persiste após UPDATE")
 }
 
 func TestTreinoRepository_ListPorTurma_FiltraPorPeriodo(t *testing.T) {
