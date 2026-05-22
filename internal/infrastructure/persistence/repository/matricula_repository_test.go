@@ -26,7 +26,7 @@ func TestMatriculaRepository_SaveAndGet(t *testing.T) {
 	tu := novaTurma(t)
 	require.NoError(t, turmaRepo.Save(ctx, tu))
 
-	m, err := turma.NewMatricula(a.ID, tu.ID, time.Now().UTC())
+	m, err := turma.NewMatricula(a.ID, tu.ID, time.Now().Add(-24*time.Hour).UTC())
 	require.NoError(t, err)
 	require.NoError(t, matRepo.Save(ctx, m))
 
@@ -58,7 +58,7 @@ func TestMatriculaRepository_GetAtivaByAtletaTurma(t *testing.T) {
 		assert.Nil(t, got)
 	})
 
-	m1, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().UTC())
+	m1, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().Add(-24*time.Hour).UTC())
 	require.NoError(t, matRepo.Save(ctx, m1))
 
 	t.Run("com matricula ATIVA: devolve", func(t *testing.T) {
@@ -93,10 +93,10 @@ func TestMatriculaRepository_UniqueAtivaPorTurma(t *testing.T) {
 	tu := novaTurma(t)
 	require.NoError(t, turmaRepo.Save(ctx, tu))
 
-	m1, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().UTC())
+	m1, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().Add(-24*time.Hour).UTC())
 	require.NoError(t, matRepo.Save(ctx, m1))
 
-	m2, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().UTC())
+	m2, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().Add(-24*time.Hour).UTC())
 	err := matRepo.Save(ctx, m2)
 	require.Error(t, err, "DB deve rejeitar 2 matrículas ATIVAS no mesmo atleta+turma")
 }
@@ -116,7 +116,7 @@ func TestMatriculaRepository_CountAtivasPorTurma(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		a := novoAtleta(t)
 		require.NoError(t, atletaRepo.Save(ctx, a))
-		m, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().UTC())
+		m, _ := turma.NewMatricula(a.ID, tu.ID, time.Now().Add(-24*time.Hour).UTC())
 		if i == 2 {
 			require.NoError(t, m.Cancelar())
 		}

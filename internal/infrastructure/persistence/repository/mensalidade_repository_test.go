@@ -27,7 +27,7 @@ func fixtureContratoComAtleta(t *testing.T, pool *PgxPlanoRepository, contratoRe
 	require.NoError(t, err)
 	require.NoError(t, pool.Save(ctx, p))
 
-	c, err := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c, err := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, err)
 	require.NoError(t, contratoRepo.Save(ctx, c))
 
@@ -131,7 +131,7 @@ func TestMensalidadeRepository_ListPorResponsavel_FiltraPorVinculo(t *testing.T)
 
 	p, _ := financeiro.NewPlano("P1", 3, decimal.NewFromInt(150), 10)
 	require.NoError(t, planoRepo.Save(ctx, p))
-	c, _ := financeiro.NewContrato(atletaDoResp.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c, _ := financeiro.NewContrato(atletaDoResp.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, c))
 	require.NoError(t, mensRepo.SaveBatch(ctx, []*financeiro.Mensalidade{
 		novaMensalidade(atletaDoResp.ID, c.ID, 2026, 1, 150),
@@ -142,7 +142,7 @@ func TestMensalidadeRepository_ListPorResponsavel_FiltraPorVinculo(t *testing.T)
 	atletaAlheio := novoAtleta(t)
 	atletaAlheio.Nome = "Outro"
 	require.NoError(t, atletaRepo.Save(ctx, atletaAlheio))
-	cAlheio, _ := financeiro.NewContrato(atletaAlheio.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	cAlheio, _ := financeiro.NewContrato(atletaAlheio.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, cAlheio))
 	require.NoError(t, mensRepo.SaveBatch(ctx, []*financeiro.Mensalidade{
 		novaMensalidade(atletaAlheio.ID, cAlheio.ID, 2026, 1, 200),
@@ -194,7 +194,7 @@ func TestMensalidadeRepository_GetByIDPorResponsavel(t *testing.T) {
 
 	p, _ := financeiro.NewPlano("P", 3, decimal.NewFromInt(150), 10)
 	require.NoError(t, planoRepo.Save(ctx, p))
-	c, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, c))
 	m := novaMensalidade(a.ID, c.ID, 2026, 1, 150)
 	require.NoError(t, mensRepo.SaveBatch(ctx, []*financeiro.Mensalidade{m}))

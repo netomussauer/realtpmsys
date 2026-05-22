@@ -27,7 +27,7 @@ func TestContratoRepository_SaveAndGet(t *testing.T) {
 	p := novoPlano(t, "P")
 	require.NoError(t, planoRepo.Save(ctx, p))
 
-	c, err := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(180))
+	c, err := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(180))
 	require.NoError(t, err)
 	require.NoError(t, contratoRepo.Save(ctx, c))
 
@@ -55,7 +55,7 @@ func TestContratoRepository_GetAtivoPorAtleta_FiltraStatus(t *testing.T) {
 	require.NoError(t, planoRepo.Save(ctx, p))
 
 	// Cria contrato CANCELADO primeiro
-	cancelado, err := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	cancelado, err := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, err)
 	require.NoError(t, cancelado.Cancelar())
 	require.NoError(t, contratoRepo.Save(ctx, cancelado))
@@ -67,7 +67,7 @@ func TestContratoRepository_GetAtivoPorAtleta_FiltraStatus(t *testing.T) {
 	})
 
 	// Agora cria um ATIVO no mesmo atleta
-	ativo, err := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(200))
+	ativo, err := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(200))
 	require.NoError(t, err)
 	require.NoError(t, contratoRepo.Save(ctx, ativo))
 
@@ -95,10 +95,10 @@ func TestContratoRepository_UniqueAtivoPorAtleta(t *testing.T) {
 	p := novoPlano(t, "P")
 	require.NoError(t, planoRepo.Save(ctx, p))
 
-	c1, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c1, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, c1))
 
-	c2, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(160))
+	c2, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(160))
 	err := contratoRepo.Save(ctx, c2)
 	require.Error(t, err, "DB deve rejeitar 2o contrato ATIVO no mesmo atleta")
 }
@@ -121,16 +121,16 @@ func TestContratoRepository_ListAtivos(t *testing.T) {
 	p := novoPlano(t, "P")
 	require.NoError(t, planoRepo.Save(ctx, p))
 
-	c1, _ := financeiro.NewContrato(a1.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c1, _ := financeiro.NewContrato(a1.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, c1))
-	c2, _ := financeiro.NewContrato(a2.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(160))
+	c2, _ := financeiro.NewContrato(a2.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(160))
 	require.NoError(t, contratoRepo.Save(ctx, c2))
 
 	// 1 cancelado num 3o atleta — não pode aparecer
 	a3 := novoAtleta(t)
 	a3.Nome = "Inativo"
 	require.NoError(t, atletaRepo.Save(ctx, a3))
-	c3, _ := financeiro.NewContrato(a3.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(170))
+	c3, _ := financeiro.NewContrato(a3.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(170))
 	require.NoError(t, c3.Cancelar())
 	require.NoError(t, contratoRepo.Save(ctx, c3))
 

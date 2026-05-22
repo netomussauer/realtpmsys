@@ -31,7 +31,7 @@ func TestRelatorioRepository_Inadimplencia(t *testing.T) {
 	require.NoError(t, atletaRepo.Save(ctx, a))
 	p := novoPlano(t, "P")
 	require.NoError(t, planoRepo.Save(ctx, p))
-	c, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, c))
 
 	// 1 vencida (passado, status PENDENTE → entra), 1 paga (não entra),
@@ -72,7 +72,7 @@ func TestRelatorioRepository_Inadimplencia_FiltraCompetencia(t *testing.T) {
 	require.NoError(t, atletaRepo.Save(ctx, a))
 	p := novoPlano(t, "P")
 	require.NoError(t, planoRepo.Save(ctx, p))
-	c, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().UTC(), decimal.NewFromInt(150))
+	c, _ := financeiro.NewContrato(a.ID, p.ID, time.Now().Add(-24*time.Hour).UTC(), decimal.NewFromInt(150))
 	require.NoError(t, contratoRepo.Save(ctx, c))
 
 	require.NoError(t, mensRepo.SaveBatch(ctx, []*financeiro.Mensalidade{
