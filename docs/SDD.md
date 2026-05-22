@@ -1,10 +1,23 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.6.0
+**Versão:** 2.7.0
 **Data:** 2026-05-22
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.6.0 (2026-05-22, integration tests):**
+>
+> - **Observabilidade de DB via `pg_stat_statements`** (ADR-011): extensão
+>   ativada no postgres do `shared-infra` + `postgres-exporter` + dashboard
+>   Grafana "Postgres Top Queries". Substitui parcialmente o que seria a
+>   função do tracing OTel a custo muito menor (ADR-011 documenta a
+>   escolha pragmática frente a OTel SDK, posto em stand-by até que surja
+>   bug intermitente que `pg_stat_statements` + Audit `latency_ms` não
+>   resolvam).
+>   Manifests dos componentes ficam no repo do home-lab (`infra-lab`),
+>   não no realtpmsys — afinal a extensão e o exporter atendem amfit
+>   também.
+>
 > **Mudanças vs v2.5.0 (2026-05-22, auto-rollout):**
 >
 > - **Testes de integração contra Postgres real**: 5 dos 14 repositories ganham
@@ -204,6 +217,24 @@ flowchart LR
 **Decisão:** Pipeline Tekton no namespace `cicd` builda a imagem com Kaniko (sem Docker daemon) a partir do clone Gitea, publica em Harbor (`harbor.lab.local`) com tag dupla `:latest` + `:sha-<7chars>`.
 **Razão:** Kaniko roda 100% in-cluster — sem necessidade de Docker daemon, sem GitHub Actions externo, sem expor secrets do registry para CI externo. Tekton já estava instalado no lab. Tag `sha-<7chars>` é imutável e permite rollback.
 **Trade-off:** Mirror PULL do Gitea (do GitHub) não dispara webhook nativamente — webhook só funciona em push direto ao Gitea. Workaround atual: invocar EventListener via curl após `mirror-sync` ou disparar PipelineRun manual via `kubectl create`. Para automação completa, ou migrar para Gitea-primary (push reverso pro GitHub) ou rodar CronJob de polling.
+
+#### ADR-011 — `pg_stat_statements` como observabilidade de DB; OTel SDK em stand-by *(adicionado em 2026-05-22)*
+
+**Decisão:** Habilitar a extensão `pg_stat_statements` no postgres do `shared-infra` + deploy de `postgres-exporter` (v0.17.1) + dashboard Grafana "Postgres Top Queries" no `infra-lab`. **Não** adotar OpenTelemetry SDK (tracing distribuído) por ora — fica em stand-by.
+
+**Razão:** As perguntas operacionais que realmente importam hoje no realtpmsys já são respondidas:
+
+- *Latência p99 por endpoint?* → `realtpmsys_http_request_duration_seconds` (ADR-009)
+- *Throughput / taxa de erro?* → `realtpmsys_http_requests_total` (ADR-009)
+- *Saúde do pool?* → `realtpmsys_pgxpool_*` (ADR-009)
+- *Correlação log ↔ request?* → `request_id` no middleware Audit
+- *Quais queries são lentas / mais frequentes / mais custosas?* → **lacuna que `pg_stat_statements` fecha**
+
+OTel agregaria principalmente *call chain entre serviços distribuídos*, e realtpmsys é monolito — não há call chain inter-serviços para rastrear. `pg_stat_statements` é nativo do postgres, sem mudar uma linha de código Go, e dá o detalhamento de DB que o tracing entregaria apenas como subproduto.
+
+**Trade-off:** O exporter expõe `queryid` (hash) — não o texto SQL, evita explosão de cardinalidade no Prometheus. Drill-down do `queryid` para o texto requer um `psql -c "SELECT query FROM pg_stat_statements WHERE queryid = <id>"` (documentado num painel "text" no próprio dashboard). Aceitável: drill-down é raro (só quando você está investigando uma query específica).
+
+**Quando revisitar OTel:** (a) surgir 2º serviço (notificação assíncrona, worker batch) com call chain real; (b) aparecer bug intermitente de latência que `latency_ms` + `pg_stat_statements` juntos não detalham; (c) compliance/SRE org-wide exigir distributed tracing como padrão.
 
 #### ADR-010 — Auto-rollout via task Tekton em vez de ArgoCD Image Updater *(adicionado em 2026-05-22)*
 

@@ -138,6 +138,13 @@ make run
 >   empty_acquire e canceled_acquire) sinalizam saturação do pool. Um
 >   `ServiceMonitor` + ConfigMap de dashboard em [infra/k8s/](infra/k8s/)
 >   ficam em sync via ArgoCD.
+>   No nível **DB**, `pg_stat_statements` está ativo no postgres do
+>   `shared-infra` — exporter + dashboard "Postgres Top Queries"
+>   ([infra-lab/kubernetes/monitoring/dashboards/](https://github.com/netomussauer/infra-lab/tree/main/kubernetes/monitoring/dashboards))
+>   mostram queries por `queryid` (mean/calls/total exec time, cache hit,
+>   TPS). Drill-down do `queryid` para o texto via `psql` (vide painel
+>   "Como usar" no próprio dashboard). ADR-011 documenta a escolha desta
+>   abordagem frente ao OTel SDK (em stand-by).
 > - **Atletas:** CRUD completo em `/api/v1/atletas` (List/Get ADMIN+TREINADOR,
 >   escrita ADMIN). Inclui `PATCH /{id}/inativar`, `/suspender`, `/reativar`.
 > - **Treinadores:** CRUD em `/api/v1/treinadores` (List/Get ADMIN+TREINADOR,
