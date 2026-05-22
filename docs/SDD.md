@@ -1,10 +1,18 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.4.0
-**Data:** 2026-05-20
+**Versão:** 2.5.0
+**Data:** 2026-05-22
 **Arquiteto:** dev-arquiteto
 **Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.4.0 (2026-05-20, observabilidade):**
+>
+> - **Auto-rollout pós-build (ADR-010)**: pipeline Tekton ganha task inline
+>   `rollout-restart` ao final, eliminando o `kubectl rollout restart` manual.
+>   Role `tekton-rollout` no ns `realtpmsys` concede ao SA `tekton-realtpmsys`
+>   (ns `cicd`) os verbs mínimos para o restart + watch do rollout status.
+>   Trade-off vs ArgoCD Image Updater documentado no ADR.
+>
 > **Mudanças vs v2.3.0 (2026-05-20, manhã):**
 >
 > - **Observabilidade — métricas Prometheus RED + pgxpool.** Antes do
@@ -186,6 +194,12 @@ flowchart LR
 **Decisão:** Pipeline Tekton no namespace `cicd` builda a imagem com Kaniko (sem Docker daemon) a partir do clone Gitea, publica em Harbor (`harbor.lab.local`) com tag dupla `:latest` + `:sha-<7chars>`.
 **Razão:** Kaniko roda 100% in-cluster — sem necessidade de Docker daemon, sem GitHub Actions externo, sem expor secrets do registry para CI externo. Tekton já estava instalado no lab. Tag `sha-<7chars>` é imutável e permite rollback.
 **Trade-off:** Mirror PULL do Gitea (do GitHub) não dispara webhook nativamente — webhook só funciona em push direto ao Gitea. Workaround atual: invocar EventListener via curl após `mirror-sync` ou disparar PipelineRun manual via `kubectl create`. Para automação completa, ou migrar para Gitea-primary (push reverso pro GitHub) ou rodar CronJob de polling.
+
+#### ADR-010 — Auto-rollout via task Tekton em vez de ArgoCD Image Updater *(adicionado em 2026-05-22)*
+
+**Decisão:** Após o `kaniko-build-push`, o pipeline Tekton roda uma task inline `rollout-restart` que executa `kubectl rollout restart deployment/realtpmsys-api` no ns `realtpmsys` usando uma Role cross-namespace (`tekton-rollout` em `infra/k8s/tekton-rollout-rbac.yaml`). Imagem `docker.io/bitnami/kubectl:latest` (alinhada com o padrão `bitnami/git:latest` das outras tasks do lab).
+**Razão:** O Deployment usa tag `:latest`, então Kaniko sobrescreve a imagem no Harbor mas o K8s não detecta drift no manifesto. Sem o restart automático, todo deploy exigia `kubectl rollout restart` manual. A alternativa GitOps "ortodoxa" — ArgoCD Image Updater — adicionaria um Deployment novo no cluster (~50MB RAM), 2 secrets (pull Harbor + push Gitea) e um loop indireto (Updater commita no Git, ArgoCD sincroniza). Para um lab com um único app sob essa pipeline o overhead não compensa.
+**Trade-off:** O restart bypassa GitOps de imagem — o Deployment continua referenciando `:latest` sem nenhum commit no Git registrando qual digest está rodando. Audit trail mora no histórico do Tekton (PipelineRun) e nas tags `:sha-<7chars>` do Harbor, não no Git. Revisitar quando: (a) surgir 2º app querendo o mesmo padrão (consolida em Image Updater), ou (b) compliance exigir rastro Git de cada deploy. Custo do Role: 4 verbs em deployments (`get/list/watch/patch`) e leitura de replicasets/pods — menor privilégio do que faria um Image Updater.
 
 #### ADR-008 — Application-layer filtering para perfil RESPONSAVEL *(adicionado em 2026-05-20)*
 

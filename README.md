@@ -257,14 +257,13 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] **Dockerfile multi-stage** (golang:1.24-bookworm → distroless) com binário ~17 MB
 - [x] **Manifestos K8s** em `infra/k8s/` (namespace, Deployment, Service LoadBalancer MetalLB, SealedSecret real)
 - [x] **2 Applications ArgoCD**: principal (infra/k8s) + tekton (infra/tekton)
-- [x] **Pipeline Tekton** com Kaniko in-cluster — tag `:sha-<7chars>` + `:latest`
+- [x] **Pipeline Tekton** com Kaniko in-cluster — tag `:sha-<7chars>` + `:latest` + task final `rollout-restart` (auto-deploy via SA cross-namespace `tekton-realtpmsys` → Role `tekton-rollout` no ns `realtpmsys`)
 - [x] **SealedSecrets** para credenciais (pg-password + jwt-secret + webhook-token)
 - [x] **Smoke test E2E validado** em produção lab: atleta → contrato → mensalidade →
   pagamento → relatório de inadimplência
 - [x] Deploy + CI/CD documentados em [infra/README.md](infra/README.md)
 - [x] **Responsavel + Uniforme** (sub-entidades de Atleta): CRUD em `/api/v1/atletas/{id}/responsaveis`, `/responsaveis/{id}`, `PUT/GET /api/v1/atletas/{id}/uniforme`. Regra `contato_principal` única por atleta via swap em transação.
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
-- [ ] ArgoCD Image Updater (bump automático do Deployment quando nova tag chega)
 - [ ] Frontend Next.js — [docs/frontend-architecture.md](docs/frontend-architecture.md) é só plano
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.
