@@ -1,0 +1,61 @@
+# RBAC cross-namespace: permite a ServiceAccount `tekton-realtpmsys` (no
+# namespace `cicd`) disparar `kubectl rollout restart` no Deployment
+# realtpmsys-api do namespace `realtpmsys`.
+#
+# Usado pela task `rollout-restart` do pipeline Tekton ao final do build,
+# eliminando o passo manual `kubectl rollout restart` após Kaniko push.
+#
+# Princípio do menor privilégio: a Role só permite o que `kubectl rollout
+# restart` + `kubectl rollout status` precisam — patch em deployments e
+# leitura de pods/replicasets do próprio app.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-rollout
+  namespace: realtpmsys
+  labels:
+    app.kubernetes.io/component: "ci-rbac"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-api"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+rules:
+  # `kubectl rollout restart` faz PATCH em spec.template.metadata.annotations
+  # da Deployment para forçar um novo ReplicaSet (sem mudar a imagem).
+  # `kubectl rollout status` usa um informer que faz list+watch em
+  # deployments (não basta `get`) — primeira tentativa falhou com
+  # "cannot list resource deployments" mesmo tendo `get`.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-rollout
+  namespace: realtpmsys
+  labels:
+    app.kubernetes.io/component: "ci-rbac"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "realtpmsys-api"
+    app.kubernetes.io/part-of: "realtpmsys"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-rollout
+subjects:
+  - kind: ServiceAccount
+    name: tekton-realtpmsys
+    namespace: cicd

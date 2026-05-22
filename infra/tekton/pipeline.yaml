@@ -3,11 +3,15 @@
 # Stages:
 #   git-clone (shallow do Gitea mirror)
 #   → kaniko-build-push (Dockerfile da raiz → harbor.lab.local/realtpmsys/api)
+#   → rollout-restart (kubectl restart Deployment p/ puxar :latest novo)
 #
 # Tasks usadas:
 #   - amfit-git-clone           → reutilizada do ns cicd (debian-based)
 #   - realtpmsys-kaniko-build-push → local (corrige bug do secret hardcoded
 #                                    na task kaniko-build-push genérica)
+#   - rollout-restart           → inline; usa SA tekton-realtpmsys com Role
+#                                 tekton-rollout no ns realtpmsys (RBAC
+#                                 cross-namespace em infra/k8s/tekton-rollout-rbac.yaml).
 #
 # Falha fast: qualquer task com erro aborta o pipeline.
 ---
@@ -87,6 +91,34 @@ spec:
           workspace: source
         - name: docker-credentials
           workspace: docker-credentials
+    # ---------------------------------------------------------------------
+    # rollout-restart: força o Deployment a puxar a :latest recém-pushada.
+    # Inline porque é específico desta pipeline (1 deployment alvo) e curto.
+    # Requer Role tekton-rollout no ns realtpmsys (vide
+    # infra/k8s/tekton-rollout-rbac.yaml).
+    # Imagem `bitnami/kubectl:latest` — segue o padrão das outras tasks do
+    # ns cicd (`alpine/git`, `bitnami/git:latest`). Tag específica `1.29.3`
+    # foi tentada antes mas não existe no Docker Hub.
+    # Timeout do `rollout status` é mais curto que o do PipelineRun para
+    # falhar fast em caso de pod em erro.
+    # ---------------------------------------------------------------------
+    - name: rollout-restart
+      runAfter: ["kaniko-build-push"]
+      taskSpec:
+        description: |
+          Reinicia o Deployment realtpmsys-api no ns realtpmsys e aguarda
+          até 3min o rollout completar. Bypassa GitOps de imagem porque o
+          Deployment usa tag :latest (sem mudança no manifesto).
+        steps:
+          - name: restart
+            image: docker.io/bitnami/kubectl:latest
+            script: |
+              #!/bin/sh
+              set -eu
+              echo "→ kubectl rollout restart deployment/realtpmsys-api -n realtpmsys"
+              kubectl rollout restart deployment/realtpmsys-api -n realtpmsys
+              echo "→ kubectl rollout status (timeout 3m)"
+              kubectl rollout status deployment/realtpmsys-api -n realtpmsys --timeout=3m
   workspaces:
     - name: source
       description: Workspace onde o código é clonado e compartilhado entre tasks.
