@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens placeholder — Fase 2 finaliza paleta + tipografia.
+   Valores em HSL para o Tailwind interpolar com /<alpha> nas classes. */
+@layer base {
+  :root {
+    /* ───────────────────────────────────────────────────────────────────
+       Identidade Academia Real TPM — paleta v2 (2026-05-25):
+       preto + azul claro. Substituiu a paleta v1 (azul-marinho + dourado).
+       Valores em HSL para permitir alpha-modifier do Tailwind (`bg-primary/80`).
+       Contraste WCAG validado: 20.5:1 (branco/preto) e 7.8:1 (azul/preto).
+       ─────────────────────────────────────────────────────────────────── */
+
+    /* Neutros */
+    --background: 0 0% 100%;        /* branco puro */
+    --foreground: 0 0% 4%;          /* preto — texto sobre fundo claro */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --muted: 210 20% 96%;           /* cinza-azulado claro pra fundos secundários */
+    --muted-foreground: 215 14% 40%;
+    --border: 214 25% 88%;
+    --input: 214 25% 88%;
+
+    /* Identidade — preto principal + azul claro accent */
+    --primary: 0 0% 4%;              /* preto #0A0A0A */
+    --primary-foreground: 0 0% 100%; /* branco */
+    --accent: 199 89% 60%;           /* azul-claro #38BDF8 (sky-400) */
+    --accent-foreground: 0 0% 4%;    /* preto sobre azul — 7.8:1 contraste */
+
+    /* Foco — azul claro pra destacar elementos focados (link + focus ring). */
+    --ring: 199 89% 60%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* Input padronizado pra formulários — usado por <input>, <select>, <textarea>.
+     Mantém visual consistente sem repetir 8 classes em cada campo. */
+  .form-input {
+    @apply w-full rounded-md border border-input bg-background px-3 py-2 text-sm
+           ring-offset-background placeholder:text-muted-foreground
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-ring
+           focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}

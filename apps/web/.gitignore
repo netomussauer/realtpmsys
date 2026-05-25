@@ -1,0 +1,31 @@
+# Build output
+.next/
+out/
+dist/
+
+# Dependencies
+node_modules/
+
+# Env / secrets
+.env
+.env.local
+.env.production.local
+.env.development.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# TypeScript incremental cache
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

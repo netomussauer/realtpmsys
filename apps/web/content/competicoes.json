@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "ultima_atualizacao": "2026-05-25",
+    "observacoes": "Placeholders enquanto o calendário oficial 2026 não fecha. Editar este arquivo (via PR) quando os eventos estiverem confirmados. Datas no formato ISO YYYY-MM-DD."
+  },
+  "eventos": [
+    {
+      "id": "copa-baixada-2026",
+      "titulo": "Copa Baixada Fluminense 2026",
+      "data": "2026-08-15",
+      "data_fim": "2026-09-20",
+      "local": "Estádio Municipal de Duque de Caxias",
+      "categorias": ["Sub-12", "Sub-14"],
+      "status": "previsto",
+      "descricao": "Tradicional campeonato regional reúne escolinhas da Baixada Fluminense. Real TPM disputará nas categorias Sub-12 e Sub-14."
+    },
+    {
+      "id": "torneio-amizade-2026",
+      "titulo": "Torneio da Amizade — 1ª edição",
+      "data": "2026-10-12",
+      "local": "Sede da Academia Real TPM",
+      "categorias": ["Sub-7", "Sub-9"],
+      "status": "previsto",
+      "descricao": "Festival de futebol para as categorias menores. Sem classificação — foco em diversão e socialização."
+    },
+    {
+      "id": "intercolegial-2026",
+      "titulo": "Intercolegial RJ — fase classificatória",
+      "data": "2026-11-08",
+      "local": "A confirmar",
+      "categorias": ["Sub-16"],
+      "status": "previsto",
+      "descricao": "Sub-16 representa a Academia na fase classificatória do Intercolegial estadual."
+    }
+  ]
+}

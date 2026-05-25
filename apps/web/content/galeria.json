@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "fonte": "Placeholders Unsplash — substituir por fotos reais em apps/web/public/galeria/ quando disponíveis.",
+    "instrucoes_substituicao": [
+      "1. Coloque os arquivos em apps/web/public/galeria/",
+      "2. Troque a propriedade `src` de https://images.unsplash.com/... para /galeria/nome-do-arquivo.jpg",
+      "3. Remova o host 'images.unsplash.com' de remotePatterns em next.config.mjs quando todas as fotos forem locais"
+    ]
+  },
+  "fotos": [
+    {
+      "id": "treino-1",
+      "src": "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=1200&q=80",
+      "alt": "Crianças jogando futebol em treino",
+      "categoria": "treino"
+    },
+    {
+      "id": "treino-2",
+      "src": "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1200&q=80",
+      "alt": "Atletas em campo correndo com a bola",
+      "categoria": "treino"
+    },
+    {
+      "id": "jogo-1",
+      "src": "https://images.unsplash.com/photo-1551958219-acbc608c6377?w=1200&q=80",
+      "alt": "Disputa de bola entre atletas em campo gramado",
+      "categoria": "jogo"
+    },
+    {
+      "id": "tecnico",
+      "src": "https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=1200&q=80",
+      "alt": "Treinador orientando atletas durante treino",
+      "categoria": "treino"
+    },
+    {
+      "id": "celebracao",
+      "src": "https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=1200&q=80",
+      "alt": "Atletas celebrando vitória em campo",
+      "categoria": "competicao"
+    },
+    {
+      "id": "fundamentos",
+      "src": "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1200&q=80",
+      "alt": "Treino de fundamentos técnicos com cones",
+      "categoria": "treino"
+    },
+    {
+      "id": "time",
+      "src": "https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?w=1200&q=80",
+      "alt": "Foto do time perfilado antes de partida",
+      "categoria": "evento"
+    },
+    {
+      "id": "campo",
+      "src": "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=1200&q=80",
+      "alt": "Campo de futebol vazio ao amanhecer",
+      "categoria": "infraestrutura"
+    }
+  ]
+}

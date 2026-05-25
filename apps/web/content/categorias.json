@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "ultima_atualizacao": "2026-05-25",
+    "observacoes": "Valores e horários são placeholders típicos do mercado da Baixada Fluminense. Substituir pelos valores reais quando definidos."
+  },
+  "categorias": [
+    {
+      "id": "sub-7",
+      "nome": "Sub-7",
+      "faixa_etaria": "5 a 7 anos",
+      "descricao": "Introdução lúdica ao futebol com foco em coordenação motora e socialização.",
+      "dias_horarios": "Sáb 9h–10h30",
+      "valor_mensal": 180,
+      "vagas": "Disponíveis"
+    },
+    {
+      "id": "sub-9",
+      "nome": "Sub-9",
+      "faixa_etaria": "7 a 9 anos",
+      "descricao": "Fundamentos técnicos do futebol — passe, domínio, condução — em ambiente recreativo.",
+      "dias_horarios": "Ter/Qui 17h–18h30",
+      "valor_mensal": 200,
+      "vagas": "Disponíveis"
+    },
+    {
+      "id": "sub-12",
+      "nome": "Sub-12",
+      "faixa_etaria": "9 a 12 anos",
+      "descricao": "Aprofundamento técnico e introdução à tática. Participação em torneios regionais.",
+      "dias_horarios": "Seg/Qua/Sex 18h–19h30",
+      "valor_mensal": 220,
+      "vagas": "Disponíveis"
+    },
+    {
+      "id": "sub-14",
+      "nome": "Sub-14",
+      "faixa_etaria": "12 a 14 anos",
+      "descricao": "Treinamento competitivo. Preparação física, jogos federados e participação em campeonatos.",
+      "dias_horarios": "Seg/Qua/Sex 19h30–21h",
+      "valor_mensal": 240,
+      "vagas": "Limitadas"
+    },
+    {
+      "id": "sub-16",
+      "nome": "Sub-16",
+      "faixa_etaria": "14 a 16 anos",
+      "descricao": "Alto rendimento. Treinamento intensivo, condicionamento e exposição a olheiros.",
+      "dias_horarios": "Ter/Qui/Sáb 19h–21h",
+      "valor_mensal": 260,
+      "vagas": "Sob consulta"
+    }
+  ]
+}
