@@ -1,0 +1,33 @@
+# Service LoadBalancer do apps/web — MetalLB 192.168.1.211.
+#
+# Mapa de IPs do lab (até 2026-05-26):
+#   201 gitea-http       202 harbor              203 argocd
+#   204 gitea-events     205 amfit-api           206 amfit-web
+#   207 amfit-minio      208 realtpmsys-api      209 (livre)
+#   210 grafana          211 realtpmsys-web (novo)
+#
+# DNS interno: realtpmsys-web.realtpmsys.svc.cluster.local
+# DNS externo: app.realtpmsys.local (config no Pi-hole)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: realtpmsys-web
+  namespace: realtpmsys
+  labels:
+    app.kubernetes.io/name: "realtpmsys-web"
+    app.kubernetes.io/component: "frontend"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.1.211
+  selector:
+    app.kubernetes.io/name: "realtpmsys-web"
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

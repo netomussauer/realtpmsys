@@ -1,0 +1,26 @@
+# Reduz contexto enviado ao daemon Docker (Kaniko) — evita transferir
+# 500MB+ de node_modules pra dentro do build.
+
+node_modules
+.next
+out
+dist
+
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+.git
+.gitignore
+README.md
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Testes / coverage
+coverage
+*.log
