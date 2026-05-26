@@ -99,7 +99,7 @@ async function trySilentRefresh(): Promise<string | null> {
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path: pathSegments } = await ctx.params;
 
-  let accessToken = await getAccessToken();
+  const accessToken = await getAccessToken();
   if (!accessToken) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }
