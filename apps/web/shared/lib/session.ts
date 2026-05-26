@@ -28,13 +28,27 @@ export const REFRESH_COOKIE = "rtpm_refresh";
 export const SESSION_COOKIE = "rtpm_session";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Configurações padrão de cookie. Todos httpOnly + secure (em prod).
+// Configurações padrão de cookie. Todos httpOnly + secure (quando HTTPS).
 // sameSite=lax permite POST navegacional (formulários cross-origin com
 // pre-flight ok); usar `strict` quebra fluxos de redirect 3rd-party. Como
 // não temos OAuth, lax é seguro.
+//
+// `secure: true` faz o browser NUNCA enviar o cookie em conexões HTTP — o
+// que quebra o lab K3s que serve via MetalLB em HTTP puro (sem TLS termination).
+// A flag COOKIE_SECURE permite override explícito. Padrão:
+//   - NODE_ENV=production E COOKIE_SECURE != "false" → secure=true
+//   - caso contrário (dev ou COOKIE_SECURE=false em prod sem TLS) → secure=false
+//
+// Em deploys reais com HTTPS, omitir COOKIE_SECURE (ou setar "true").
 // ─────────────────────────────────────────────────────────────────────────────
 
-const isProd = process.env.NODE_ENV === "production";
+function shouldUseSecureCookie(): boolean {
+  if (process.env.COOKIE_SECURE === "false") return false;
+  if (process.env.COOKIE_SECURE === "true") return true;
+  return process.env.NODE_ENV === "production";
+}
+
+const isSecureCookie = shouldUseSecureCookie();
 
 interface CookieSetOptions {
   maxAgeSeconds: number;
@@ -43,7 +57,7 @@ interface CookieSetOptions {
 function baseCookieOptions({ maxAgeSeconds }: CookieSetOptions) {
   return {
     httpOnly: true,
-    secure: isProd, // dev usa http://localhost; prod exige https
+    secure: isSecureCookie,
     sameSite: "lax" as const,
     path: "/",
     maxAge: maxAgeSeconds,
