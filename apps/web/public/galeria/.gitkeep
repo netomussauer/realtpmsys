@@ -1,0 +1,3 @@
+# Placeholder para a pasta de fotos da galeria.
+# Quando o gestor enviar fotos reais, substituir os placeholders Unsplash
+# em content/galeria.json apontando para arquivos aqui (ex.: /galeria/foto1.jpg).

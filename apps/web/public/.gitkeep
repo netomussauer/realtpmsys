@@ -1,0 +1,5 @@
+# Placeholder para garantir que apps/web/public/ existe no clone do Git.
+# O Next.js exige a pasta public/ durante o build (Dockerfile faz
+# `COPY --from=builder /app/public ./public`), mesmo que vazia.
+# Quando houver assets reais (logo.svg, favicon.ico, fotos da galeria
+# locais), este arquivo pode ser removido.
