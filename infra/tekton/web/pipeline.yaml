@@ -75,9 +75,12 @@ spec:
           value: "$(params.image-repo)"
         - name: tag
           value: "$(params.image-tag)"
-        # IMPORTANTE: Dockerfile e context apontam para o subdir apps/web/.
+        # IMPORTANTE: o param `dockerfile` é RELATIVO ao `context` (a task
+        # passa `--dockerfile=<valor>` + `--context=dir://workspace/<context>`).
+        # Logo: context=apps/web aponta ao subdir e dockerfile=Dockerfile
+        # resolve para apps/web/Dockerfile no workspace.
         - name: dockerfile
-          value: "apps/web/Dockerfile"
+          value: "Dockerfile"
         - name: context
           value: "apps/web"
       workspaces:
