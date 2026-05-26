@@ -96,8 +96,47 @@ Os valores HSL ficam em **dois lugares** que precisam bater sempre:
 
 Não use cores hardcoded em componentes — sempre `bg-primary`, `text-accent`, etc. Isso garante que uma troca de paleta seja edição em **2 arquivos**, não em 30 componentes.
 
+## Autenticação
+
+Padrão **BFF (Backend-for-Frontend)** — cookies `httpOnly` gerenciados pelo Next.js, JWT nunca exposto ao código client-side.
+
+### Cookies
+
+| Cookie         | Conteúdo                                  | Lifetime                              |
+| -------------- | ----------------------------------------- | ------------------------------------- |
+| `rtpm_access`  | JWT access bruto                          | curto (60min — segue `expires_at`)    |
+| `rtpm_refresh` | JWT refresh bruto                         | longo (7 dias — segue refresh policy) |
+| `rtpm_session` | JSON `{userId, email, perfil, expiresAt}` | igual ao refresh                      |
+
+Todos com `httpOnly: true`, `sameSite: 'lax'` e `secure: true` em produção.
+
+### Endpoints BFF
+
+| Método | Path                | Função                                                  |
+| ------ | ------------------- | ------------------------------------------------------- |
+| POST   | `/api/auth/login`   | Encaminha pro backend, grava 3 cookies                  |
+| POST   | `/api/auth/refresh` | Renova `rtpm_access` usando `rtpm_refresh`              |
+| POST   | `/api/auth/logout`  | Limpa cookies (backend é stateless, nada server-side)   |
+| GET    | `/api/auth/session` | Devolve sessão atual (com verify JWT) ou 401            |
+
+### Defesas em camadas
+
+1. **Middleware Next** (`middleware.ts`) — Edge: redireciona `(app)/*` sem `rtpm_session` para `/login?next=...`. Bloqueia rotas por perfil (TREINADOR sem `/mensalidades`, RESPONSAVEL sem `/turmas` etc.).
+2. **Layout `(app)/layout.tsx`** — Server Component que chama `getVerifiedSession()` (verify HMAC via `jose`). Sem sessão válida → `redirect("/login")`. Segunda barreira caso o middleware seja contornado.
+3. **Backend Go** sempre revalida JWT com `Auth` middleware + filtros por `usuario_responsavel_id`. Mesmo se as 2 camadas acima falharem, nenhum dado vaza pelo backend (ADR-008).
+
+### JWT_SECRET compartilhado
+
+O frontend faz `jwtVerify` (HS256) dos tokens emitidos pelo backend. Logo, **`JWT_SECRET` precisa bater entre os dois**:
+
+- Backend Go: `config.JWT.Secret` lido do SealedSecret `realtpmsys-jwt-secret` no K3s.
+- Frontend: env var `JWT_SECRET` montada a partir do MESMO SealedSecret no Deployment de `apps/web`.
+- Dev local: copiar do `realtpmsys/.env` ou gerar manualmente (`openssl rand -base64 64`) — desde que igual entre os dois.
+
+Sem o secret, `/api/auth/session` retorna 401 e o app fica inutilizável (intencional).
+
 ## Status
 
-🚧 **Em construção** — Fases 1 (Setup) e 2 (Tokens + Layouts) concluídas.
+🚧 **Em construção** — Fases 1 (Setup), 2 (Tokens + Layouts) e 3 (Auth) concluídas.
 Plano completo: ver [docs/frontend-architecture.md](../../docs/frontend-architecture.md)
 e checklist no SDD.

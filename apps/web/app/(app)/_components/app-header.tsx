@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { LogOut, User } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { authService } from "@/features/auth/services/auth.service";
 
 interface AppHeaderProps {
-  /** Em Fase 3 vem do hook useSession (cookie httpOnly via BFF). */
+  /** Vem de (app)/layout.tsx (server-side via getVerifiedSession). */
   userEmail: string;
   perfil: "ADMIN" | "TREINADOR" | "RESPONSAVEL";
 }
@@ -12,14 +14,20 @@ interface AppHeaderProps {
 /**
  * AppHeader — barra superior dentro da área protegida.
  *
- * Mostra usuário + perfil + botão de logout. O logout chama o BFF route
- * handler `/api/auth/logout` (Fase 3) que limpa os cookies e redireciona.
+ * Logout chama POST /api/auth/logout (BFF limpa cookies httpOnly) e
+ * faz hard-navigate pra Home — assim qualquer cache TanStack/Next em
+ * memória é descartado, sem chance de UI "lembrar" dados do user antigo.
  */
 export function AppHeader({ userEmail, perfil }: AppHeaderProps) {
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const handleLogout = async () => {
-    // TODO Fase 3: chamar /api/auth/logout (BFF) e redirecionar.
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/login";
+    setLoggingOut(true);
+    try {
+      await authService.logout();
+    } finally {
+      window.location.href = "/";
+    }
   };
 
   return (
@@ -36,10 +44,11 @@ export function AppHeader({ userEmail, perfil }: AppHeaderProps) {
           variant="ghost"
           size="sm"
           onClick={handleLogout}
+          disabled={loggingOut}
           aria-label="Sair"
         >
           <LogOut className="h-4 w-4" />
-          Sair
+          {loggingOut ? "Saindo..." : "Sair"}
         </Button>
       </div>
     </header>
