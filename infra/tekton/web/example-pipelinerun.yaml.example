@@ -1,0 +1,88 @@
+# Example PipelineRun para o build manual do realtpmsys-web.
+#
+# IMPORTANTE: este arquivo é apenas documentação/template — NÃO aplicar
+# diretamente. Use a extensão `.example` para que o ArgoCD ignore
+# (vide spec.source.directory.exclude: '*.example' nas Applications).
+#
+# Razão de ter este exemplo:
+#   - O Pipeline em si não carrega `podTemplate`; ele vem do PipelineRun.
+#   - O lab K3s tem DNS interno enviesado para `registry.npmjs.org` (CoreDNS
+#     forward → Pi-hole retorna AAAA-only intermitente), causando EAI_AGAIN
+#     no `npm install` durante o build do Next.js.
+#   - O fix definitivo é o `dnsConfig` abaixo: CoreDNS interno para resolver
+#     nomes svc.cluster.local + 1.1.1.1/8.8.8.8 públicos como fallback.
+#
+# Como disparar:
+#   1. Atualize `git-revision` para o commit a buildar
+#   2. Atualize `image-tag` para `sha-<7chars>`
+#   3. Renomeie .example -> .yaml e:
+#        kubectl create -f infra/tekton/web/example-pipelinerun.yaml
+#   4. Acompanhe:
+#        kubectl get pipelinerun -n cicd -l tekton.dev/pipeline=realtpmsys-build-web -w
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: realtpmsys-build-web-manual-
+  namespace: cicd
+  labels:
+    tekton.dev/pipeline: realtpmsys-build-web
+    trigger: manual
+spec:
+  pipelineRef:
+    name: realtpmsys-build-web
+  timeouts:
+    pipeline: 30m
+    tasks: 25m
+  taskRunTemplate:
+    serviceAccountName: tekton-realtpmsys
+    podTemplate:
+      nodeSelector:
+        workload: cicd
+      securityContext:
+        fsGroup: 65532
+      # ───────────────────────────────────────────────────────────────────
+      # DNS combo OBRIGATÓRIO para o build do web neste lab:
+      # - CoreDNS (10.43.0.10) PRIMEIRO para resolver gitea-http e Harbor
+      # - 1.1.1.1 + 8.8.8.8 como fallback público para registry.npmjs.org
+      # Sem essa configuração o `npm install` falha com EAI_AGAIN porque o
+      # CoreDNS retorna AAAA-only intermitente nesta rota.
+      # ───────────────────────────────────────────────────────────────────
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - 10.43.0.10
+          - 1.1.1.1
+          - 8.8.8.8
+        searches:
+          - cicd.svc.cluster.local
+          - svc.cluster.local
+          - cluster.local
+        options:
+          - name: ndots
+            value: "5"
+          - name: single-request-reopen
+  params:
+    - name: git-url
+      value: http://gitea-http.cicd.svc.cluster.local:3000/labadmin/realtpmsys.git
+    - name: git-revision
+      value: "REPLACE_WITH_COMMIT_SHA"  # ex: 801bbc7af49d780f62ce2799cb170e71e53daec
+    - name: image-repo
+      value: harbor.lab.local/realtpmsys/web
+    - name: image-tag
+      value: "REPLACE_WITH_SHORT_SHA"   # ex: sha-801bbc7
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 8Gi  # next build + node_modules + .next ~ 5-6 GB
+          storageClassName: local-path
+    - name: docker-credentials
+      secret:
+        secretName: harbor-push-realtpmsys
+        items:
+          - key: .dockerconfigjson
+            path: config.json

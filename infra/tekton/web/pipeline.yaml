@@ -28,6 +28,11 @@ spec:
   description: |
     Pipeline de build + push da imagem realtpmsys WEB (Next.js).
     Stages: git-clone -> kaniko build/push (apps/web/Dockerfile) -> rollout-restart.
+
+    IMPORTANTE — `podTemplate.dnsConfig` é obrigatório no PipelineRun:
+    o CoreDNS deste lab retorna AAAA-only intermitente para
+    `registry.npmjs.org`, causando EAI_AGAIN no `npm install`. Use o
+    template em `example-pipelinerun.yaml.example` ao disparar manual.
   params:
     - name: git-url
       type: string

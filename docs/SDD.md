@@ -1,10 +1,40 @@
 # SDD — realtpmsys: Sistema de Gerenciamento de Escola de Futebol
 
-**Versão:** 2.8.0
-**Data:** 2026-05-22
+**Versão:** 3.0.0
+**Data:** 2026-05-26
 **Arquiteto:** dev-arquiteto
-**Status:** MVP em produção lab — Go 1.24, deploy via ArgoCD + Tekton + Harbor
+**Status:** MVP em produção lab — Go 1.24 (backend) + Next.js 15 (frontend), deploy via ArgoCD + Tekton + Harbor
 
+> **Mudanças vs v2.8.0 (2026-05-22, integration tests completos):**
+>
+> - **Frontend Next.js 15 entregue ponta-a-ponta** em `apps/web/`. Cobre 6
+>   fases:
+>   1. Setup (Next 15 App Router + TS + Tailwind + TanStack Query + Zod + RHF)
+>   2. Design tokens (paleta preto + azul claro, WCAG validado) + 3 layouts
+>      (public/app/auth)
+>   3. Site institucional com 6 páginas SSG (Home, Sobre, Categorias,
+>      Galeria com lightbox próprio, Competições, Contato com form mailto)
+>   4. **Auth ponta-a-ponta** padrão BFF (Backend-for-Frontend): 4 route
+>      handlers (`/api/auth/{login,refresh,logout,session}`), cookies
+>      `httpOnly` + JWT verify HMAC com o mesmo `JWT_SECRET` do backend Go,
+>      middleware Edge de proteção de rotas + autorização por perfil,
+>      defesa em 3 camadas (middleware → layout server → backend)
+>   5. **Feature `atletas`** completa: proxy genérico `/api/v1/[...path]`
+>      com refresh silencioso em 401, 4 hooks TanStack Query, 6 mutations,
+>      8 componentes, 4 páginas (lista paginada, detalhe, **wizard 3 steps**,
+>      edição). ADR-012 documenta as escolhas.
+>   6. Deploy K3s: Dockerfile multi-stage (Node 22 → standalone → distroless),
+>      manifests `infra/k8s/web/`, pipeline Tekton `infra/tekton/web/`,
+>      ArgoCD app cobrindo `infra/k8s/web/`, DNS `app.realtpmsys.local`
+>      MetalLB 192.168.1.211.
+> - Smoke E2E em produção lab: **8 de 8 cenários PASS** (login → cookies
+>   httpOnly → session → proxy /api/v1/atletas → dashboard → atletas →
+>   redirect sem cookie → logout).
+> - 6 fixes encontrados durante o deploy ficaram registrados em commits
+>   atômicos (rastreáveis): kaniko dockerfile path, lint prefer-const,
+>   peer dep react@19 vs next@15.0.3, `.gitkeep` em public/, DNS interno
+>   AAAA-only intermitente, cookie `secure=true` em HTTP.
+>
 > **Mudanças vs v2.7.0 (2026-05-22, pg_stat_statements):**
 >
 > - **Cobertura de integration tests fechada**: os 9 repos restantes
@@ -232,6 +262,28 @@ flowchart LR
 **Decisão:** Pipeline Tekton no namespace `cicd` builda a imagem com Kaniko (sem Docker daemon) a partir do clone Gitea, publica em Harbor (`harbor.lab.local`) com tag dupla `:latest` + `:sha-<7chars>`.
 **Razão:** Kaniko roda 100% in-cluster — sem necessidade de Docker daemon, sem GitHub Actions externo, sem expor secrets do registry para CI externo. Tekton já estava instalado no lab. Tag `sha-<7chars>` é imutável e permite rollback.
 **Trade-off:** Mirror PULL do Gitea (do GitHub) não dispara webhook nativamente — webhook só funciona em push direto ao Gitea. Workaround atual: invocar EventListener via curl após `mirror-sync` ou disparar PipelineRun manual via `kubectl create`. Para automação completa, ou migrar para Gitea-primary (push reverso pro GitHub) ou rodar CronJob de polling.
+
+#### ADR-012 — Frontend Next.js no mesmo repo + BFF + cookies httpOnly *(adicionado em 2026-05-26)*
+
+**Decisão:** Frontend Next.js 15 versionado em `apps/web/` dentro deste mesmo repo (monorepo simples, sem pnpm workspace); deploy via Tekton+Kaniko+ArgoCD igual ao backend Go (mesmas ferramentas, manifests separados em `infra/k8s/web/` e `infra/tekton/web/`). Autenticação pelo padrão **BFF (Backend-for-Frontend)**: route handlers do próprio Next.js (`app/api/auth/*` e proxy `app/api/v1/[...path]`) armazenam tokens JWT em cookies `httpOnly`+`sameSite=lax`; bundle do browser **nunca** vê o JWT. Frontend faz `jwtVerify` HMAC com o mesmo `JWT_SECRET` do backend Go (via Secret K8s compartilhado).
+
+**Razão:**
+
+- **Monorepo**: tipos de domínio (DTOs do backend) mudam junto com o frontend. PR único cobre os dois lados, smoke E2E no mesmo CI. Custo de mistura Go+TS é menor que sincronizar dois repos pra contrato instável.
+- **Mesmas ferramentas (Tekton+Kaniko+ArgoCD)**: zero curva nova de stack, reutiliza `harbor-pull-secret`, `tekton-rollout` Role cross-namespace (ADR-010), o padrão `app.kubernetes.io/*` de labels já cristalizado. O Dockerfile do web tem 3 stages (deps → builder → distroless) gerando ~150MB.
+- **BFF + httpOnly cookies**: tokens nunca acessíveis a XSS. Proxy `/api/v1/[...path]` faz **refresh silencioso** em 401 (consome `rtpm_refresh`, atualiza `rtpm_access`, re-tenta). Defesa em 3 camadas — Edge middleware Next (presença), layout server (`getVerifiedSession()` com `jose`), backend Go (sempre valida JWT + autorização por perfil/RLS-app-layer do ADR-008).
+
+**Trade-off:**
+
+- Cookies `secure: true` quebram em HTTP puro (lab via MetalLB sem TLS). Env `COOKIE_SECURE=false` é override explícito no Deployment — quando entrar Ingress + cert-manager, remover. Aceita-se temporariamente porque a alternativa (Ingress no lab) é uma frente própria que ainda não foi priorizada.
+- DNS interno do lab (CoreDNS → Pi-hole) retorna AAAA-only intermitente para `registry.npmjs.org`, quebrando `npm install` com EAI_AGAIN. Workaround documentado: `podTemplate.dnsConfig` com fallback 1.1.1.1+8.8.8.8 no PipelineRun. Template em `infra/tekton/web/example-pipelinerun.yaml.example`.
+- `JWT_SECRET` precisa estar duplicado em dois Deployments (api + web). Não duplica risco real (atacante que ler de um secret tem o mesmo poder de ler do outro), mas exige cuidado em rotação. Aceito porque a alternativa (BFF chamar backend pra cada validação) adiciona latência por request.
+
+**Quando revisitar:**
+
+- Migração para `pnpm workspaces` se o frontend ficar grande demais e/ou virem mais apps (mobile?).
+- Adoção de Ingress + cert-manager → remove `COOKIE_SECURE=false`.
+- Refresh token revogável (hoje stateless, ADR-008 do backend) → necessita storage server-side, possivelmente Redis do shared-infra.
 
 #### ADR-011 — `pg_stat_statements` como observabilidade de DB; OTel SDK em stand-by *(adicionado em 2026-05-22)*
 

@@ -1,12 +1,20 @@
 # realtpmsys — Sistema de Gerenciamento de Escola de Futebol
 
-Sistema completo para gestão de escola de futebol: cadastro de atletas, controle de turmas, frequência e mensalidades.
+Sistema completo (backend + frontend) para a **Academia de Futebol Real TPM** ("Os muleques da Baixada" — Duque de Caxias/RJ): cadastro de atletas, controle de turmas, frequência, mensalidades, e site institucional público.
 
-**Stack:** Go 1.24 · Chi v5 · PostgreSQL 16 · pgx/v5 · sqlc · golang-migrate
+**Stack:**
 
-> Stack migrada de Python para Go em 2026-04-15 — ADR-001 em [docs/SDD.md](docs/SDD.md).
-> **MVP operacional** no K3s do infra-lab em `http://api.realtpmsys.local:8000`
-> (MetalLB 192.168.1.208). CI/CD via Tekton + Kaniko + Harbor + ArgoCD.
+- **Backend:** Go 1.24 · Chi v5 · PostgreSQL 16 · pgx/v5 · sqlc · golang-migrate
+- **Frontend:** Next.js 15 · React 19 · TypeScript · Tailwind CSS · TanStack Query · Zod (vide [apps/web/README.md](apps/web/README.md))
+
+> Backend migrado de Python para Go em 2026-04-15 — ADR-001 em [docs/SDD.md](docs/SDD.md).
+> Frontend Next.js entregue em 2026-05-26 — ADR-012.
+> **MVP operacional** no K3s do infra-lab:
+>
+> - API em `http://api.realtpmsys.local:8000` (MetalLB 192.168.1.208)
+> - Web em `http://app.realtpmsys.local` (MetalLB 192.168.1.211)
+>
+> CI/CD via Tekton + Kaniko + Harbor + ArgoCD (mesmos manifests pra ambos).
 
 ---
 
