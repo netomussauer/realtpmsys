@@ -2,27 +2,26 @@
 title: "realtpmsys — Arquitetura de Frontend"
 version: "1.0.0"
 date: "2026-04-15"
-status: "planejamento — não implementado"
+status: "superado — ver docs/SDD.md (ADR-012) para o estado real implementado"
 last_review: "2026-05-19"
 ---
 
 # realtpmsys — Arquitetura de Frontend
 
-> ## ⚠️ Status: planejamento (não implementado)
+> ## ⚠️ Documento superado — mantido só como registro do plano original
 >
-> Este documento descreve a **arquitetura projetada** para o frontend Next.js
-> do realtpmsys. Em 2026-05-19 **nenhuma linha de código frontend foi escrita**
-> — o repositório contém apenas o backend Go (`cmd/api/`, `internal/`).
+> Este documento descreve a **arquitetura projetada** em 2026-04-15, quando
+> nenhuma linha de código frontend existia. **O frontend foi implementado
+> desde então** (site institucional + login + feature Atletas, em produção
+> no K3s do lab) — mas o escopo real entregue é **mais estreito** que o
+> planejado aqui: este plano previa módulos de Turmas, Treinos, Financeiro
+> e Relatórios no frontend que **não foram construídos** (só Auth + Atletas
+> + site institucional têm UI hoje; Dashboard é um placeholder estático).
 >
-> O MVP atual é **API-first**: pode ser consumido via curl, Postman ou
-> integrações externas. Para validar fluxos, ver smoke test E2E em
-> [SDD.md §6.x — Validação](SDD.md) e endpoints reais em
-> [openapi.yaml](openapi.yaml).
->
-> **Próximo passo** quando frontend for priorizado: criar `apps/web/` no
-> repositório (seguindo a estrutura descrita abaixo) ou criar repo
-> separado `realtpmsys-web` consumindo a API publicada em
-> `http://api.realtpmsys.local:8000`.
+> **Para o estado real e atual do frontend, ver `docs/SDD.md` (ADR-012) e
+> `apps/web/README.md`.** Este documento continua útil como referência do
+> design original e da estrutura de pastas pensada, mas não deve ser lido
+> como descrição do que existe no repositório hoje.
 
 ---
 

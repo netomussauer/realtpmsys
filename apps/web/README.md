@@ -137,6 +137,14 @@ Sem o secret, `/api/auth/session` retorna 401 e o app fica inutilizável (intenc
 
 ## Status
 
-🚧 **Em construção** — Fases 1 (Setup), 2 (Tokens + Layouts) e 3 (Auth) concluídas.
-Plano completo: ver [docs/frontend-architecture.md](../../docs/frontend-architecture.md)
-e checklist no SDD.
+✅ **MVP em produção** — Fases 1 (Setup), 2 (Tokens + Layouts), 3 (Site
+institucional), 4 (Auth BFF) e 5 (Feature Atletas) concluídas. Fase 6
+(Deploy K3s) também entregue — ver `infra/k8s/web/` e `infra/tekton/web/`.
+
+**Escopo real vs. plano original**: Turmas, Frequência, Financeiro e
+Relatórios têm backend pronto mas ainda **não têm UI** — o Dashboard
+também é um placeholder estático. O plano original em
+[docs/frontend-architecture.md](../../docs/frontend-architecture.md)
+previa esses módulos, mas eles não foram construídos ainda. Ver
+`docs/SDD.md` (mudanças v3.0 / ADR-012) para o changelog detalhado do
+que foi de fato entregue.

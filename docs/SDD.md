@@ -153,13 +153,18 @@ flowchart TD
 
 ### 1.2 Bounded Contexts (DDD)
 
-O sistema é dividido em **5 contextos delimitados**:
+O sistema é dividido em **7 contextos delimitados** (Treinador e Campo
+foram promovidos a domínios próprios na v2.0 — cada um com repository,
+use cases, handler e rotas independentes — e não são mais satélites de
+Turmas):
 
 | Contexto | Responsabilidade | Tipo |
 |---|---|---|
 | **Identidade** | Autenticação e perfis de usuário | Supporting |
 | **Atletas** | Cadastro, responsáveis, uniformes | Core |
-| **Turmas** | Horários, campos, treinadores, matrículas | Core |
+| **Treinadores** | Cadastro, vínculo com Usuario, ativar/inativar | Core |
+| **Campos** | Cadastro, ativar/inativar | Supporting |
+| **Turmas** | Horários, matrículas | Core |
 | **Frequência** | Presenças por treino, relatórios | Core |
 | **Financeiro** | Planos, mensalidades, pagamentos, inadimplência | Core |
 
@@ -174,10 +179,15 @@ flowchart LR
         A[Atleta]
         R[Responsável]
     end
+    subgraph Treinadores
+        TR[Treinador]
+    end
+    subgraph Campos
+        C[Campo]
+    end
     subgraph Turmas
         T[Turma]
         M[Matrícula]
-        TR[Treinador]
     end
     subgraph Frequencia["Frequência"]
         TRN[Treino]
@@ -190,8 +200,11 @@ flowchart LR
     end
 
     Identidade -->|ACL: usuario_id| Atletas
+    Identidade -->|ACL: usuario_id| Treinadores
     Atletas -->|Open Host: atleta_id| Turmas
     Atletas -->|Open Host: atleta_id| Financeiro
+    Treinadores -->|Open Host: treinador_id| Turmas
+    Campos -->|Open Host: campo_id| Turmas
     Turmas -->|Open Host: matricula_id| Frequencia
     Atletas -->|Open Host: atleta_id| Frequencia
 ```

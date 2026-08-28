@@ -26,7 +26,7 @@ Sistema completo (backend + frontend) para a **Academia de Futebol Real TPM** ("
 | [docs/schema.sql](docs/schema.sql) | Schema PostgreSQL com todos os índices e constraints |
 | [docs/openapi.yaml](docs/openapi.yaml) | Contrato OpenAPI 3.1 de todos os endpoints |
 | [docs/persistence-guide.md](docs/persistence-guide.md) | Guia de implementação da camada de persistência em Go |
-| [docs/frontend-architecture.md](docs/frontend-architecture.md) | Arquitetura Next.js — **planejamento, não implementado** |
+| [docs/frontend-architecture.md](docs/frontend-architecture.md) | Plano original do frontend (abr/2026) — **superado**, ver `docs/SDD.md` (ADR-012) para o estado real implementado |
 | [infra/README.md](infra/README.md) | Deploy: Dockerfile, K8s, ArgoCD, Tekton pipeline |
 
 ---
@@ -87,7 +87,7 @@ internal/
     │   ├── response/problem.go       # RFC 7807 — mapeia erros de domínio
     │   └── handler/                  # 8 handlers (auth/atleta/treinador/...)
     └── jobs/mensalidade_job.go       # cron mensal (geração) + diário (vencer)
-migrations/                           # golang-migrate — 000001 schema + 000002 admin
+migrations/                           # golang-migrate — 000001 schema, 000002 admin, 000003 seed responsavel
 infra/                                # deploy/CI manifests
 ├── k8s/                              # Deployment + Service + SealedSecret (ns realtpmsys)
 ├── tekton/                           # Pipeline + Task Kaniko + Trigger + EventListener
@@ -286,7 +286,10 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
   pagamento → relatório de inadimplência
 - [x] Deploy + CI/CD documentados em [infra/README.md](infra/README.md)
 - [x] **Responsavel + Uniforme** (sub-entidades de Atleta): CRUD em `/api/v1/atletas/{id}/responsaveis`, `/responsaveis/{id}`, `PUT/GET /api/v1/atletas/{id}/uniforme`. Regra `contato_principal` única por atleta via swap em transação.
+- [x] **Frontend Next.js** — implementado e em produção (não é mais só plano): site institucional (6 páginas SSG), login com BFF (3 cookies httpOnly), feature Atletas ponta a ponta (lista, detalhe, wizard de cadastro, edição). Ver `docs/SDD.md` (ADR-012) para o estado real — `docs/frontend-architecture.md` é só o plano original, não reflete o que foi de fato construído.
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
-- [ ] Frontend Next.js — [docs/frontend-architecture.md](docs/frontend-architecture.md) é só plano
+- [ ] **CRUD de Planos** — domínio e repositório existem (`internal/domain/financeiro`, `plano_repository.go`), mas falta use case + handler + rota `/api/v1/planos`. Hoje só é possível criar/editar plano via SQL direto.
+- [ ] **UI de Turmas, Frequência, Financeiro e Relatórios** — o backend está pronto pra esses 4 domínios, mas o frontend só cobre Auth + Atletas + site institucional. Dashboard também é só um placeholder estático.
+- [ ] **Testes de use case** dos contextos Atletas, Treinadores, Campos, Turmas e Frequência — só há teste de domínio e de integração de repositório; a lógica de orquestração desses `use_cases.go` (ex: `MatricularAtleta`, `LancarFrequencia`) não tem teste próprio.
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.
