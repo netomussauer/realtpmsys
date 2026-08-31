@@ -2,6 +2,7 @@
 
 import { Ban, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { formatDateBR } from "@/shared/lib/format";
 import { useAtleta } from "@/features/atletas/hooks/use-atleta";
 import { useCancelarMatricula } from "@/features/turmas/hooks/use-mutations";
 import { usePermission } from "@/features/auth/hooks/use-permission";
@@ -125,10 +126,10 @@ function MatriculaRow({
           : (atletaQuery.data?.nome ?? matricula.atleta_id)}
       </td>
       <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-        {formatDate(matricula.data_inicio)}
+        {formatDateBR(matricula.data_inicio)}
       </td>
       <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-        {matricula.data_fim ? formatDate(matricula.data_fim) : "—"}
+        {matricula.data_fim ? formatDateBR(matricula.data_fim) : "—"}
       </td>
       <td className="px-4 py-3">
         <MatriculaStatusBadge status={matricula.status} />
@@ -150,12 +151,4 @@ function MatriculaRow({
       )}
     </tr>
   );
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("pt-BR");
-  } catch {
-    return iso;
-  }
 }

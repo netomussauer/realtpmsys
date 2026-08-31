@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useState } from "react";
-import { ChevronLeft, Pencil, AlertCircle, Clock, Plus } from "lucide-react";
+import { ChevronLeft, Pencil, AlertCircle, Clock, Plus, Calendar } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/features/turmas/components/status-badge";
 import { StatusActions } from "@/features/turmas/components/status-actions";
@@ -121,16 +121,22 @@ export default function TurmaDetailPage({
             {vagasLabel && ` · ${vagasLabel}`}
           </p>
         </div>
-        {canManage && (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/treinos?turma_id=${t.id}`}>
+              <Calendar className="h-4 w-4" />
+              Ver treinos
+            </Link>
+          </Button>
+          {canManage && (
             <Button asChild variant="outline">
               <Link href={`/turmas/${t.id}/editar`}>
                 <Pencil className="h-4 w-4" />
                 Editar
               </Link>
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {canManage && <StatusActions turmaId={t.id} statusAtual={t.status} />}

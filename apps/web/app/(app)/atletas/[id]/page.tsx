@@ -14,6 +14,7 @@ import {
   Shirt,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { formatDateBR } from "@/shared/lib/format";
 import { StatusBadge } from "@/features/atletas/components/status-badge";
 import { StatusActions } from "@/features/atletas/components/status-actions";
 import {
@@ -99,7 +100,7 @@ export default function AtletaDetailPage({
       {/* Dados pessoais */}
       <Card title="Dados pessoais">
         <DetailGrid>
-          <DetailItem icon={Calendar} label="Nascimento" value={formatDate(a.data_nascimento)} />
+          <DetailItem icon={Calendar} label="Nascimento" value={formatDateBR(a.data_nascimento)} />
           <DetailItem icon={CreditCard} label="CPF" value={a.cpf ?? "—"} />
           <DetailItem icon={CreditCard} label="RG" value={a.rg ?? "—"} />
           <DetailItem icon={Phone} label="Telefone" value={a.telefone ?? "—"} />
@@ -211,12 +212,4 @@ function DetailItem({
       </p>
     </div>
   );
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("pt-BR");
-  } catch {
-    return iso;
-  }
 }
