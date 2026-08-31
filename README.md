@@ -290,8 +290,9 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] **Frontend Next.js** — implementado e em produção (não é mais só plano): site institucional (6 páginas SSG), login com BFF (3 cookies httpOnly), feature Atletas ponta a ponta (lista, detalhe, wizard de cadastro, edição). Ver `docs/SDD.md` (ADR-012) para o estado real — `docs/frontend-architecture.md` é só o plano original, não reflete o que foi de fato construído.
 - [x] **CRUD de Planos** — `CriarPlanoUseCase` + `PlanoHandler` + rotas `/api/v1/planos` (`GET` lista ativos, `GET /{id}`, `POST` cria — ADMIN+TREINADOR leem, só ADMIN cria). Antes só era possível criar/editar plano via SQL direto. Sem `PUT`/toggle ainda (fora do contrato OpenAPI atual, entidade não tem método de atualização).
 - [x] **UI de Turmas** — CRUD + horários (sub-formulário dinâmico) + transições de status (encerrar/suspender/reativar) + matrículas (matricular/cancelar, com busca de atleta). TREINADOR vê tudo, só ADMIN escreve.
+- [x] **UI de Frequência** — treinos por turma (criar + listar com filtro de período) + lançamento de presença em lote (checklist por atleta matriculado, PRESENTE/AUSENTE/JUSTIFICADO). ADMIN e TREINADOR têm paridade total aqui (backend não distingue escrita).
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
-- [ ] **UI de Frequência, Financeiro e Relatórios** — o backend está pronto pra esses 3 domínios, mas o frontend ainda não cobre. Dashboard também é só um placeholder estático.
+- [ ] **UI de Financeiro e Relatórios** — o backend está pronto pra esses 2 domínios, mas o frontend ainda não cobre. Dashboard também é só um placeholder estático.
 - [ ] **Testes de use case** dos contextos Atletas, Treinadores, Campos, Turmas e Frequência — só há teste de domínio e de integração de repositório; a lógica de orquestração desses `use_cases.go` (ex: `MatricularAtleta`, `LancarFrequencia`) não tem teste próprio.
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.
