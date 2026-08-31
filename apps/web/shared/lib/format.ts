@@ -17,3 +17,20 @@ export function formatDateBR(iso: string): string {
     return iso;
   }
 }
+
+/**
+ * formatCurrencyBRL — formata um valor monetário como moeda brasileira
+ * (ex.: "150" ou "150.5" → "R$ 150,50").
+ *
+ * A API financeira (feature `financeiro`) devolve valores como string
+ * decimal (não `number`) para evitar erro de arredondamento de ponto
+ * flutuante em dinheiro — este helper só formata para exibição, nunca faz
+ * aritmética com o valor. Se o valor não puder ser convertido para número,
+ * devolve o valor original sem formatar (evita quebrar a UI por um dado
+ * inesperado do backend).
+ */
+export function formatCurrencyBRL(value: string | number): string {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}

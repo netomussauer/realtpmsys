@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import {
   ChevronLeft,
   Pencil,
@@ -12,9 +12,11 @@ import {
   Calendar,
   CreditCard,
   Shirt,
+  Handshake,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
-import { formatDateBR } from "@/shared/lib/format";
+import { formatDateBR, formatCurrencyBRL } from "@/shared/lib/format";
 import { StatusBadge } from "@/features/atletas/components/status-badge";
 import { StatusActions } from "@/features/atletas/components/status-actions";
 import {
@@ -22,6 +24,10 @@ import {
   useResponsaveisDoAtleta,
   useUniformeDoAtleta,
 } from "@/features/atletas/hooks/use-atleta";
+import { usePermission } from "@/features/auth/hooks/use-permission";
+import { ContratoForm } from "@/features/financeiro/components/contrato-form";
+import { useFirmarContrato } from "@/features/financeiro/hooks/use-mutations";
+import type { ContratoFormData } from "@/features/financeiro/schemas/contrato.schema";
 
 /**
  * /atletas/[id] — detalhe do atleta.
@@ -38,6 +44,26 @@ export default function AtletaDetailPage({
   const atletaQuery = useAtleta(id);
   const responsaveisQuery = useResponsaveisDoAtleta(id);
   const uniformeQuery = useUniformeDoAtleta(id);
+
+  const canManageFinanceiro = usePermission(["ADMIN"]);
+  const [showContratoForm, setShowContratoForm] = useState(false);
+  const [contratoError, setContratoError] = useState<string | null>(null);
+  const [contratoSucesso, setContratoSucesso] = useState<{
+    dataInicio: string;
+    valor: string;
+  } | null>(null);
+  const firmarContrato = useFirmarContrato(id);
+
+  const onSubmitContrato = async (data: ContratoFormData) => {
+    setContratoError(null);
+    try {
+      const contrato = await firmarContrato.mutateAsync(data);
+      setContratoSucesso({ dataInicio: contrato.data_inicio, valor: contrato.valor_contratado });
+      setShowContratoForm(false);
+    } catch (e) {
+      setContratoError((e as Error).message);
+    }
+  };
 
   if (atletaQuery.isLoading) {
     return (
@@ -171,6 +197,54 @@ export default function AtletaDetailPage({
           </DetailGrid>
         )}
       </Card>
+
+      {/* Financeiro — só ADMIN firma contrato */}
+      {canManageFinanceiro && (
+        <Card title="Financeiro">
+          {contratoSucesso && (
+            <div
+              role="status"
+              className="mb-4 flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900"
+            >
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              Contrato firmado com início em {formatDateBR(contratoSucesso.dataInicio)}, valor{" "}
+              {formatCurrencyBRL(contratoSucesso.valor)}.
+            </div>
+          )}
+
+          {!showContratoForm ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Não é possível consultar contratos já firmados por aqui — o backend só
+                expõe a criação de contrato (não existe listagem nem cancelamento).
+                Use esta ação para registrar um novo contrato entre este atleta e um
+                plano.
+              </p>
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={() => {
+                  setShowContratoForm(true);
+                  setContratoSucesso(null);
+                }}
+              >
+                <Handshake className="h-4 w-4" />
+                Firmar contrato
+              </Button>
+            </>
+          ) : (
+            <ContratoForm
+              serverError={contratoError}
+              isSubmitting={firmarContrato.isPending}
+              onSubmit={onSubmitContrato}
+              onCancel={() => {
+                setShowContratoForm(false);
+                setContratoError(null);
+              }}
+            />
+          )}
+        </Card>
+      )}
     </div>
   );
 }

@@ -40,7 +40,10 @@ func NewMensalidadeHandler(
 
 func (h *MensalidadeHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	filter := financeiro.MensalidadeFilter{Page: 1, PerPage: 20}
+	filter := financeiro.MensalidadeFilter{
+		Page:    parseInt(q.Get("page"), 1),
+		PerPage: parseInt(q.Get("per_page"), 20),
+	}
 
 	if v := q.Get("atleta_id"); v != "" {
 		id, err := uuid.Parse(v)
