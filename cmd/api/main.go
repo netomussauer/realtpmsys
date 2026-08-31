@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/robfig/cron/v3"
 	appatleta "github.com/realtpmsys/realtpmsys/internal/application/atleta"
 	appcampo "github.com/realtpmsys/realtpmsys/internal/application/campo"
 	appfinanceiro "github.com/realtpmsys/realtpmsys/internal/application/financeiro"
 	appfreq "github.com/realtpmsys/realtpmsys/internal/application/frequencia"
 	appidentidade "github.com/realtpmsys/realtpmsys/internal/application/identidade"
+	appplano "github.com/realtpmsys/realtpmsys/internal/application/plano"
 	apprel "github.com/realtpmsys/realtpmsys/internal/application/relatorio"
 	apptreinador "github.com/realtpmsys/realtpmsys/internal/application/treinador"
 	appturma "github.com/realtpmsys/realtpmsys/internal/application/turma"
@@ -29,6 +29,7 @@ import (
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/metrics"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/migrate"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/repository"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
@@ -112,6 +113,7 @@ func run(logger *slog.Logger) error {
 	gerarMensalidades := appfinanceiro.NewGerarMensalidadesUseCase(contratoRepo, mensalidadeRepo, planoRepo)
 	marcarVencidas := appfinanceiro.NewMarcarMensalidadesVencidasUseCase(mensalidadeRepo)
 	firmarContrato := appfinanceiro.NewFirmarContratoUseCase(contratoRepo, planoRepo)
+	criarPlano := appplano.NewCriarPlanoUseCase(planoRepo)
 
 	// Use Cases — Identidade
 	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
@@ -163,6 +165,7 @@ func run(logger *slog.Logger) error {
 		Treino:      handler.NewTreinoHandler(criarTreino, lancarFrequencia, treinoRepo, frequenciaRepo),
 		Mensalidade: handler.NewMensalidadeHandler(registrarPagamento, cancelarMensalidade, gerarMensalidades, mensalidadeRepo),
 		Contrato:    handler.NewContratoHandler(firmarContrato),
+		Plano:       handler.NewPlanoHandler(criarPlano, planoRepo),
 		Relatorio:   handler.NewRelatorioHandler(relatorioService),
 	}
 

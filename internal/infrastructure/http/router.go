@@ -25,6 +25,7 @@ type Handlers struct {
 	Treino      *handler.TreinoHandler
 	Mensalidade *handler.MensalidadeHandler
 	Contrato    *handler.ContratoHandler
+	Plano       *handler.PlanoHandler
 	Relatorio   *handler.RelatorioHandler
 }
 
@@ -169,6 +170,19 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 		r.Route("/matriculas", func(r chi.Router) {
 			r.Use(middleware.RequirePerfil("ADMIN"))
 			r.Patch("/{id}/cancelar", h.Turma.CancelarMatricula)
+		})
+
+		// Planos
+		r.Route("/planos", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN", "TREINADOR"))
+				r.Get("/", h.Plano.List)
+				r.Get("/{id}", h.Plano.GetByID)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.RequirePerfil("ADMIN"))
+				r.Post("/", h.Plano.Criar)
+			})
 		})
 
 		// Contratos — apenas ADMIN

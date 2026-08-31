@@ -57,6 +57,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, shared.ErrDomainViolation),
 		errors.Is(err, shared.ErrDiasSemanasInvalido),
 		errors.Is(err, shared.ErrValorInvalido),
+		errors.Is(err, shared.ErrDiaVencimentoInvalido),
 		errors.Is(err, shared.ErrCPFInvalido),
 		errors.Is(err, shared.ErrFaixaEtariaInvalida),
 		errors.Is(err, shared.ErrIdadeForaDaFaixa):

@@ -169,7 +169,8 @@ make run
 > - **Frequência:** `POST /api/v1/treinos/{id}/frequencias` lança presenças em
 >   lote (upsert idempotente por treino+atleta). `GET` consulta o registro.
 > - **Financeiro:** `POST /api/v1/contratos` (ADMIN), `/api/v1/mensalidades`
->   (List, Get, Pagar, Cancelar, Gerar)
+>   (List, Get, Pagar, Cancelar, Gerar), `/api/v1/planos` (List ativos + Get
+>   ADMIN+TREINADOR, Post ADMIN)
 > - **Relatórios:** `GET /api/v1/relatorios/inadimplencia?competencia_ano=&competencia_mes=` (ADMIN),
 >   `/relatorios/frequencia/{atleta_id}` e `/relatorios/frequencia/turma/{turma_id}`
 >   (ADMIN+TREINADOR) com taxa de presença calculada.
@@ -287,8 +288,8 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] Deploy + CI/CD documentados em [infra/README.md](infra/README.md)
 - [x] **Responsavel + Uniforme** (sub-entidades de Atleta): CRUD em `/api/v1/atletas/{id}/responsaveis`, `/responsaveis/{id}`, `PUT/GET /api/v1/atletas/{id}/uniforme`. Regra `contato_principal` única por atleta via swap em transação.
 - [x] **Frontend Next.js** — implementado e em produção (não é mais só plano): site institucional (6 páginas SSG), login com BFF (3 cookies httpOnly), feature Atletas ponta a ponta (lista, detalhe, wizard de cadastro, edição). Ver `docs/SDD.md` (ADR-012) para o estado real — `docs/frontend-architecture.md` é só o plano original, não reflete o que foi de fato construído.
+- [x] **CRUD de Planos** — `CriarPlanoUseCase` + `PlanoHandler` + rotas `/api/v1/planos` (`GET` lista ativos, `GET /{id}`, `POST` cria — ADMIN+TREINADOR leem, só ADMIN cria). Antes só era possível criar/editar plano via SQL direto. Sem `PUT`/toggle ainda (fora do contrato OpenAPI atual, entidade não tem método de atualização).
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
-- [ ] **CRUD de Planos** — domínio e repositório existem (`internal/domain/financeiro`, `plano_repository.go`), mas falta use case + handler + rota `/api/v1/planos`. Hoje só é possível criar/editar plano via SQL direto.
 - [ ] **UI de Turmas, Frequência, Financeiro e Relatórios** — o backend está pronto pra esses 4 domínios, mas o frontend só cobre Auth + Atletas + site institucional. Dashboard também é só um placeholder estático.
 - [ ] **Testes de use case** dos contextos Atletas, Treinadores, Campos, Turmas e Frequência — só há teste de domínio e de integração de repositório; a lógica de orquestração desses `use_cases.go` (ex: `MatricularAtleta`, `LancarFrequencia`) não tem teste próprio.
 
