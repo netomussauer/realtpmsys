@@ -292,8 +292,9 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] **UI de Turmas** — CRUD + horários (sub-formulário dinâmico) + transições de status (encerrar/suspender/reativar) + matrículas (matricular/cancelar, com busca de atleta). TREINADOR vê tudo, só ADMIN escreve.
 - [x] **UI de Frequência** — treinos por turma (criar + listar com filtro de período) + lançamento de presença em lote (checklist por atleta matriculado, PRESENTE/AUSENTE/JUSTIFICADO). ADMIN e TREINADOR têm paridade total aqui (backend não distingue escrita).
 - [x] **UI de Financeiro** — mensalidades (listar/filtrar/pagar/cancelar/gerar em lote, com resumo de totais) e firmar contrato (ação a partir do detalhe do atleta — não há listagem de contratos possível, o backend só expõe `POST /contratos`). ADMIN gerencia tudo; RESPONSAVEL só vê as mensalidades dos próprios atletas; TREINADOR não acessa.
+- [x] **UI de Relatórios** — inadimplência (com resumo de totais, ADMIN only) e frequência por atleta/turma (ADMIN+TREINADOR). Com isso, os 4 domínios de UI que faltavam (Turmas, Frequência, Financeiro, Relatórios) estão completos.
 - [ ] Mirror push reverso Gitea → GitHub (resolve webhook automático sem polling)
-- [ ] **UI de Relatórios** — o backend está pronto (inadimplência + frequência por atleta/turma), mas o frontend ainda não cobre. Dashboard também é só um placeholder estático.
+- [ ] **Dashboard** ainda é só um placeholder estático (Fase 4 do plano original, nunca retomada — os 4 módulos acima cobrem a gestão, mas não há uma tela de KPIs consolidados).
 - [ ] **Testes de use case** dos contextos Atletas, Treinadores, Campos, Turmas e Frequência — só há teste de domínio e de integração de repositório; a lógica de orquestração desses `use_cases.go` (ex: `MatricularAtleta`, `LancarFrequencia`) não tem teste próprio.
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.
