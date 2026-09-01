@@ -77,11 +77,20 @@ spec:
       spec:
         pipelineRef:
           name: realtpmsys-build-api
-        serviceAccountName: tekton-realtpmsys
         timeouts:
           pipeline: "30m"
           tasks: "20m"
         taskRunTemplate:
+          # serviceAccountName precisa estar aqui (não no nível de spec) —
+          # o campo PipelineRun.spec.serviceAccountName é ignorado pelo
+          # Tekton Pipelines v1 (substituído por taskRunTemplate.serviceAccountName).
+          # Bug real encontrado em 2026-09-01: o primeiro PipelineRun genuinamente
+          # disparado por webhook neste cluster rodou como
+          # system:serviceaccount:cicd:default (sem a Role tekton-rollout
+          # cross-namespace), então a task rollout-restart falhou com 403 ao
+          # tentar `kubectl rollout restart deployment/realtpmsys-api -n realtpmsys`
+          # mesmo com o build+push tendo funcionado normalmente.
+          serviceAccountName: tekton-realtpmsys
           podTemplate:
             nodeSelector:
               workload: cicd
