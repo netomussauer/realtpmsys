@@ -12,11 +12,17 @@ import type { AtletaFilter } from "@/features/atletas/types/atleta.types";
  * página/filtro. Stale 30s do default global (providers.tsx).
  *
  * Query key inclui o filter inteiro → cada combinação tem cache próprio.
+ *
+ * `enabled` (default true) — mesmo padrão de useInadimplencia: quem chama
+ * de um contexto onde nem todo perfil tem acesso a `GET /atletas` (ex.:
+ * RESPONSAVEL, bloqueado em router.go) deve passar `enabled: false` pra
+ * evitar disparar a query e estourar 403 antes do JSX decidir renderizar.
  */
-export function useAtletas(filter: AtletaFilter = {}) {
+export function useAtletas(filter: AtletaFilter = {}, enabled = true) {
   return useQuery({
     queryKey: ["atletas", "list", filter],
     queryFn: () => atletaService.list(filter),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
