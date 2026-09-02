@@ -2,11 +2,22 @@
 #
 # Fluxo:
 #   Gitea push → EventListener (realtpmsys-event-listener)
-#                ↓ gitea interceptor (valida HMAC do secret)
+#                ↓ github interceptor (valida HMAC via X-Hub-Signature-256)
 #                ↓ cel interceptor (filtra refs/heads/main + extrai short_sha)
 #                ↓ realtpmsys-gitea-binding (mapeia body → params)
 #                ↓ realtpmsys-build-template (cria PipelineRun)
 #   PipelineRun realtpmsys-build-api-<sha7>-<rand>
+#
+# Sobre o interceptor "github": não existe ClusterInterceptor "gitea" neste
+# cluster (só cel, github, gitlab, bitbucket, slack). Gitea >= 1.16 envia,
+# além do X-Gitea-Signature nativo, um X-Hub-Signature-256 no mesmo formato
+# do GitHub (HMAC-SHA256, prefixo "sha256=") especificamente para
+# compatibilidade — confirmado no código-fonte do Gitea 1.25.5
+# (services/webhook/deliver.go: req.Header.Add("X-Hub-Signature-256",
+# "sha256="+signatureSHA256), calculado com o mesmo secret do webhook).
+# Isso permite reaproveitar o interceptor "github" já instalado, sem precisar
+# de um interceptor customizado. Requer configurar o mesmo secret na Secret
+# K8s abaixo e no campo "Secret" do webhook no Gitea.
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
@@ -145,13 +156,15 @@ spec:
   bindings:
     - ref: realtpmsys-gitea-binding
       kind: TriggerBinding
-  # NOTA: o ClusterInterceptor "gitea" não está instalado no cluster — só os
-  # builtins cel, github, gitlab, bitbucket, slack. O Gitea envia HMAC no
-  # header X-Gitea-Signature (formato diferente do github X-Hub-Signature-256),
-  # então não dá pra reaproveitar o github interceptor diretamente.
-  # Em lab interno (webhook em Service ClusterIP, não exposto a internet) é
-  # aceitável manter só validação de schema via CEL.
   interceptors:
+    - ref:
+        kind: ClusterInterceptor
+        name: github
+      params:
+        - name: secretRef
+          value:
+            secretName: gitea-webhook-secret-realtpmsys
+            secretKey: secretToken
     - ref:
         kind: ClusterInterceptor
         name: cel
