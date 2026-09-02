@@ -24,8 +24,8 @@ type AdicionarResponsavelInput struct {
 }
 
 type AdicionarResponsavelUseCase struct {
-	atletas       domainatleta.Repository
-	responsaveis  domainatleta.ResponsavelRepository
+	atletas      domainatleta.Repository
+	responsaveis domainatleta.ResponsavelRepository
 }
 
 func NewAdicionarResponsavelUseCase(
