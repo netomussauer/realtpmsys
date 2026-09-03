@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useTurmas } from "@/features/turmas/hooks/use-turmas";
 
 interface TurmaPickerProps {
@@ -17,14 +18,16 @@ interface TurmaPickerProps {
  * treinos que faz sentido consultar.
  */
 export function TurmaPicker({ value, onChange }: TurmaPickerProps) {
+  const id = useId();
   const turmasQuery = useTurmas({ per_page: 100 });
 
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <label htmlFor={id} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
         Turma
       </label>
       <select
+        id={id}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         className="form-input md:w-72"

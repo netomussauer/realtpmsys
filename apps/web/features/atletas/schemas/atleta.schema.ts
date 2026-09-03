@@ -24,11 +24,16 @@ export const atletaSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
 
-  rg: z.string().max(20).optional().or(z.literal("").transform(() => undefined)),
+  // Ordem invertida em relação aos campos acima: sem um regex que já
+  // rejeite "", `.optional()` (que só cobre undefined, não "") aceitava a
+  // string vazia direto pelo branch da esquerda, nunca chegando no `.or(...)`
+  // — bug real, achado durante a escrita de testes (atleta.schema.test.ts).
+  // Testando o literal("") primeiro garante a normalização em qualquer caso.
+  rg: z.literal("").transform(() => undefined).or(z.string().max(20).optional()),
 
-  endereco: z.string().max(200).optional().or(z.literal("").transform(() => undefined)),
+  endereco: z.literal("").transform(() => undefined).or(z.string().max(200).optional()),
 
-  cidade: z.string().max(100).optional().or(z.literal("").transform(() => undefined)),
+  cidade: z.literal("").transform(() => undefined).or(z.string().max(100).optional()),
 
   uf: z
     .string()
@@ -49,10 +54,9 @@ export const atletaSchema = z.object({
     .or(z.literal("").transform(() => undefined)),
 
   telefone: z
-    .string()
-    .max(15)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+    .literal("")
+    .transform(() => undefined)
+    .or(z.string().max(15).optional()),
 });
 
 export type AtletaFormData = z.infer<typeof atletaSchema>;

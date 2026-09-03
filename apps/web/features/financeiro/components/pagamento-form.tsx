@@ -1,5 +1,6 @@
 "use client";
 
+import { cloneElement, useId, type ReactElement } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { pagamentoSchema, type PagamentoFormData } from "@/features/financeiro/schemas/pagamento.schema";
@@ -120,13 +121,14 @@ function Field({
 }: {
   label: string;
   error?: string;
-  children: React.ReactNode;
+  children: ReactElement<{ id?: string }>;
   className?: string;
 }) {
+  const id = useId();
   return (
     <div className={cn("space-y-1", className)}>
-      <label className="text-sm font-medium text-foreground">{label}</label>
-      {children}
+      <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
+      {cloneElement(children, { id })}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );

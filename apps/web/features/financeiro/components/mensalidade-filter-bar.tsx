@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import type {
@@ -44,6 +44,8 @@ const STATUS_LABELS: Record<MensalidadeStatus, string> = {
  * partir de 2 caracteres, sem introduzir dependência nova de UI).
  */
 export function MensalidadeFilterBar({ value, onChange }: MensalidadeFilterBarProps) {
+  const atletaId = useId();
+  const statusId = useId();
   const isAdmin = usePermission(["ADMIN"]);
 
   const [busca, setBusca] = useState("");
@@ -90,7 +92,7 @@ export function MensalidadeFilterBar({ value, onChange }: MensalidadeFilterBarPr
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 md:flex-row md:items-end">
       {isAdmin && (
         <div className="flex-1 space-y-1.5">
-          <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <label htmlFor={atletaId} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Atleta
           </label>
 
@@ -105,6 +107,7 @@ export function MensalidadeFilterBar({ value, onChange }: MensalidadeFilterBarPr
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
+                id={atletaId}
                 type="search"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
@@ -141,10 +144,11 @@ export function MensalidadeFilterBar({ value, onChange }: MensalidadeFilterBarPr
       )}
 
       <div className="space-y-1.5 md:w-48">
-        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <label htmlFor={statusId} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Status
         </label>
         <select
+          id={statusId}
           value={value.status ?? ""}
           onChange={(e) => handleStatus(e.target.value)}
           className="form-input"

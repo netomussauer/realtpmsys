@@ -1,5 +1,6 @@
 "use client";
 
+import { cloneElement, useId, type ReactElement } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -170,12 +171,13 @@ function Field({
   label: string;
   hint?: string;
   error?: string;
-  children: React.ReactNode;
+  children: ReactElement<{ id?: string }>;
 }) {
+  const id = useId();
   return (
     <div className="space-y-1">
-      <label className="text-sm font-medium text-foreground">{label}</label>
-      {children}
+      <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
+      {cloneElement(children, { id })}
       {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>

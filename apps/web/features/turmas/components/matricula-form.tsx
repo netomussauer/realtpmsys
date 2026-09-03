@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
@@ -37,6 +37,8 @@ export function MatriculaForm({
   onSubmit,
   onCancel,
 }: MatriculaFormProps) {
+  const atletaId = useId();
+  const dataInicioId = useId();
   const [busca, setBusca] = useState("");
   const [buscaDebounced, setBuscaDebounced] = useState("");
   const [atletaSelecionado, setAtletaSelecionado] = useState<{ id: string; nome: string } | null>(null);
@@ -84,7 +86,7 @@ export function MatriculaForm({
       )}
 
       <div className="space-y-1">
-        <label className="text-sm font-medium text-foreground">Atleta *</label>
+        <label htmlFor={atletaId} className="text-sm font-medium text-foreground">Atleta *</label>
 
         {atletaSelecionado ? (
           <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 p-2 text-sm">
@@ -97,6 +99,7 @@ export function MatriculaForm({
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
+              id={atletaId}
               type="search"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
@@ -134,8 +137,9 @@ export function MatriculaForm({
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm font-medium text-foreground">Data de início *</label>
+        <label htmlFor={dataInicioId} className="text-sm font-medium text-foreground">Data de início *</label>
         <input
+          id={dataInicioId}
           {...register("data_inicio")}
           type="date"
           className="form-input md:w-56"

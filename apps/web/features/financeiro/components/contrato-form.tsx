@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { contratoSchema, type ContratoFormData } from "@/features/financeiro/schemas/contrato.schema";
@@ -25,6 +26,9 @@ interface ContratoFormProps {
  * valor como referência assim que um plano é escolhido.
  */
 export function ContratoForm({ serverError, isSubmitting, onSubmit, onCancel }: ContratoFormProps) {
+  const planoId = useId();
+  const dataInicioId = useId();
+  const valorContratadoId = useId();
   const planosQuery = usePlanosAtivos();
 
   const {
@@ -52,8 +56,8 @@ export function ContratoForm({ serverError, isSubmitting, onSubmit, onCancel }: 
       )}
 
       <div className="space-y-1">
-        <label className="text-sm font-medium text-foreground">Plano *</label>
-        <select {...register("plano_id")} className="form-input" disabled={planosQuery.isLoading}>
+        <label htmlFor={planoId} className="text-sm font-medium text-foreground">Plano *</label>
+        <select id={planoId} {...register("plano_id")} className="form-input" disabled={planosQuery.isLoading}>
           <option value="">Selecione um plano...</option>
           {(planosQuery.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
@@ -66,16 +70,17 @@ export function ContratoForm({ serverError, isSubmitting, onSubmit, onCancel }: 
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="text-sm font-medium text-foreground">Data de início *</label>
-          <input {...register("data_inicio")} type="date" className="form-input" />
+          <label htmlFor={dataInicioId} className="text-sm font-medium text-foreground">Data de início *</label>
+          <input id={dataInicioId} {...register("data_inicio")} type="date" className="form-input" />
           {errors.data_inicio && (
             <p className="text-xs text-destructive">{errors.data_inicio.message}</p>
           )}
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-foreground">Valor contratado</label>
+          <label htmlFor={valorContratadoId} className="text-sm font-medium text-foreground">Valor contratado</label>
           <input
+            id={valorContratadoId}
             {...register("valor_contratado")}
             type="text"
             inputMode="decimal"

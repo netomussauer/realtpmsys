@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { X } from "lucide-react";
 import type { TreinoFilter } from "@/features/frequencia/types/frequencia.types";
 import { Button } from "@/shared/components/ui/button";
@@ -17,15 +18,18 @@ interface TreinoFilterBarProps {
  * Mudança no filtro reseta `page` pra 1 — mesmo racional de turma-filter-bar.tsx.
  */
 export function TreinoFilterBar({ value, onChange }: TreinoFilterBarProps) {
+  const dataInicioId = useId();
+  const dataFimId = useId();
   const hasFilters = !!(value.data_inicio || value.data_fim);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 md:flex-row md:items-end">
       <div className="space-y-1.5">
-        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <label htmlFor={dataInicioId} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           De
         </label>
         <input
+          id={dataInicioId}
           type="date"
           value={value.data_inicio ?? ""}
           onChange={(e) =>
@@ -36,10 +40,11 @@ export function TreinoFilterBar({ value, onChange }: TreinoFilterBarProps) {
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <label htmlFor={dataFimId} className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Até
         </label>
         <input
+          id={dataFimId}
           type="date"
           value={value.data_fim ?? ""}
           onChange={(e) =>

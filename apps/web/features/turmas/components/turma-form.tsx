@@ -1,5 +1,6 @@
 "use client";
 
+import { cloneElement, useId, type ReactElement } from "react";
 import { useForm, useFieldArray, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2 } from "lucide-react";
@@ -230,13 +231,14 @@ function Field({
   label: string;
   hint?: string;
   error?: string;
-  children: React.ReactNode;
+  children: ReactElement<{ id?: string }>;
   className?: string;
 }) {
+  const id = useId();
   return (
     <div className={cn("space-y-1", className)}>
-      <label className="text-sm font-medium text-foreground">{label}</label>
-      {children}
+      <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
+      {cloneElement(children, { id })}
       {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
