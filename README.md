@@ -323,3 +323,4 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] **Testes de use case** dos contextos Atletas, Treinadores, Campos, Turmas e Frequência — 187 testes novos cobrindo a lógica de orquestração desses `use_cases.go` (ex: `MatricularAtleta`, `LancarFrequencia`), seguindo a convenção já estabelecida em Identidade/Relatório (testify + fakes hand-rolled implementando as interfaces `Repository`). Cobertura de frontend (`apps/web`) também escrita do zero nesse mesmo esforço — 78 arquivos de teste, 516 testes, infra Vitest configurada pela primeira vez.
 
 > Para implementar os módulos pendentes, siga o [guia de persistência](docs/persistence-guide.md) com o agente `dev-expert-fullcycle`.
+
