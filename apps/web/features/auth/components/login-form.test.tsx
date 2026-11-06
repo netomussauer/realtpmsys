@@ -106,6 +106,19 @@ describe("LoginForm", () => {
     expect(mockedInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["auth", "session"] });
   });
 
+  it("senha temporária: vai direto para /minha-conta, ignorando ?next", async () => {
+    mockedUseSearchParams.mockReturnValue(new URLSearchParams("next=/turmas"));
+    const user = userEvent.setup();
+    mockedLogin.mockResolvedValue({ userId: "u1", perfil: "ADMIN", deveTrocarSenha: true });
+    renderForm();
+
+    await preencherFormulario(user, "joao@realtpm.app", "senhaTemp123");
+    await user.click(screen.getByRole("button", { name: /entrar/i }));
+
+    await vi.waitFor(() => expect(mockedPush).toHaveBeenCalledWith("/minha-conta"));
+    expect(mockedPush).not.toHaveBeenCalledWith("/turmas");
+  });
+
   it("redireciona para a URL de ?next quando presente", async () => {
     mockedUseSearchParams.mockReturnValue(new URLSearchParams("next=/turmas"));
     const user = userEvent.setup();
@@ -116,6 +129,24 @@ describe("LoginForm", () => {
     await user.click(screen.getByRole("button", { name: /entrar/i }));
 
     await vi.waitFor(() => expect(mockedPush).toHaveBeenCalledWith("/turmas"));
+  });
+
+  it.each([
+    ["URL absoluta", "https://evil.example/phish"],
+    ["protocolo-relativa", "//evil.example"],
+    ["barra invertida", "/\\evil.example"],
+    ["esquema javascript", "javascript:alert(1)"],
+  ])("open redirect: ?next com %s é ignorado e vai para /dashboard", async (_nome, malicioso) => {
+    mockedUseSearchParams.mockReturnValue(new URLSearchParams({ next: malicioso }));
+    const user = userEvent.setup();
+    mockedLogin.mockResolvedValue({ userId: "u1", perfil: "ADMIN" });
+    renderForm();
+
+    await preencherFormulario(user, "joao@realtpm.app", "senha123");
+    await user.click(screen.getByRole("button", { name: /entrar/i }));
+
+    await vi.waitFor(() => expect(mockedPush).toHaveBeenCalledWith("/dashboard"));
+    expect(mockedPush).not.toHaveBeenCalledWith(malicioso);
   });
 
   it("exibe a mensagem de erro do servidor quando o login falha", async () => {

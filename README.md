@@ -87,7 +87,7 @@ internal/
     │   ├── response/problem.go       # RFC 7807 — mapeia erros de domínio
     │   └── handler/                  # 8 handlers (auth/atleta/treinador/...)
     └── jobs/mensalidade_job.go       # cron mensal (geração) + diário (vencer)
-migrations/                           # golang-migrate — 000001 schema, 000002 admin, 000003 seed responsavel
+migrations/                           # golang-migrate — 000001 schema, 000002 admin, 000003 seed responsavel, 000004 gestão de contas (refresh_tokens)
 infra/                                # deploy/CI manifests
 ├── k8s/                              # Deployment + Service + SealedSecret (ns realtpmsys)
 ├── tekton/                           # Pipeline + Task Kaniko + Trigger + EventListener
@@ -131,8 +131,13 @@ make run
 > **Estado atual da API:**
 >
 > - **Públicos:** `/health`, `POST /auth/login` (retorna par `access_token` + `refresh_token`),
->   `POST /auth/refresh` (consome `refresh_token` e devolve novo `access_token`;
->   refresh **não rotaciona** — vide [docs/openapi.yaml](docs/openapi.yaml))
+>   `POST /auth/refresh` (**refresh rotativo**: consome o `refresh_token` e devolve
+>   um novo par; reuso de token consumido revoga a sessão — ADR-013),
+>   `POST /auth/logout` (revoga a sessão) — vide [docs/openapi.yaml](docs/openapi.yaml)
+> - **Gestão de contas (ADMIN):** `/api/v1/usuarios` (listar, criar, editar,
+>   ativar/desativar, redefinir senha). A senha é sempre uma temporária gerada
+>   pelo sistema, exibida uma única vez. **Qualquer perfil:** `PATCH /api/v1/me/senha`.
+>   Com senha temporária, só esse endpoint responde (403 `PASSWORD_CHANGE_REQUIRED` nos demais).
 > - **Perfil RESPONSAVEL** acessa: `GET /atletas/{id}` (e sub-recursos
 >   `/responsaveis` e `/uniforme`), `GET /mensalidades` (lista filtrada)
 >   e `GET /mensalidades/{id}` — todos restritos aos atletas vinculados a
@@ -178,7 +183,11 @@ make run
 >   marcação `PENDENTE→VENCIDO` `0 1 * * *` (diário)
 >
 > **Credenciais iniciais (após `make migrate-up`):**
-> `admin@realtpmsys.local` / `admin123` — **trocar em produção**.
+> `admin@realtpmsys.local` / `admin123` e `responsavel@realtpmsys.local` / `Test@1234`
+> (semeadas pelas migrations `000002`/`000003`) — **trocar/desativar em produção**
+> pela tela `/minha-conta` (troca) e `/contas` (desativar), logo após o primeiro
+> deploy da migration `000004`. O `admin` não precisa ser recriado: entre com a
+> senha acima e use "Minha conta".
 
 ---
 
@@ -271,7 +280,8 @@ make check        # fmt + vet + lint + test (rodar antes do commit)
 - [x] `MensalidadeHandler` com respostas RFC 7807 — endpoints completos
 - [x] Service + `RelatorioHandler` — inadimplência + frequência por atleta + frequência consolidada por turma (com taxa de presença)
 - [x] Middleware JWT (`Auth` + `RequirePerfil`) ativo em `/api/v1/*` — rejeita refresh token em rotas protegidas via claim `typ`
-- [x] **Refresh token**: `LoginUseCase` emite par access+refresh com claim `typ`; `RefreshTokenUseCase` valida `typ=refresh`, releitura do usuário e devolve novo access (sem rotacionar refresh)
+- [x] **Refresh token** (ADR-013): `LoginUseCase` emite par access+refresh e persiste o hash do refresh numa nova família; `RefreshTokenUseCase` é **rotativo** (consome o token e emite um novo, mantendo a expiração absoluta), detecta reuso (revoga a família) e relê o usuário; `LogoutUseCase` revoga a família
+- [x] **Gestão de contas** (ADR-013): `/contas` (ADMIN — listar, criar, editar nome/perfil, ativar/desativar, redefinir senha) e `/minha-conta` (troca da própria senha, todos os perfis). Senha temporária gerada pelo sistema e exibida uma vez; troca obrigatória no primeiro acesso (claim `dts` + 403 `PASSWORD_CHANGE_REQUIRED`); um ADMIN não desativa/rebaixa a si mesmo nem o último ADMIN ativo; desativar/redefinir/mudar perfil revogam as sessões
 - [x] **Middleware `Audit`**: log JSON estruturado por request (method, path, status, latency_ms, bytes, ip, request_id, user_id, perfil) — substitui o `chimiddleware.Logger` text-based; pula `/health`; severidade `info/warn/error` conforme status
 - [x] Cron jobs do contexto Financeiro: `GerarMensalidades` mensal (`0 6 1 * *`) e `MarcarMensalidadesVencidas` diário (`0 1 * * *`)
 - [x] Migrations golang-migrate (`000001_initial_schema`, `000002_admin_password`)

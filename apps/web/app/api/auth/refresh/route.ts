@@ -1,40 +1,45 @@
 import { NextResponse } from "next/server";
-import { backendFetch, type BackendError } from "@/shared/lib/backend";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
+import type { BackendError } from "@/shared/lib/backend";
+import { refreshSession } from "@/shared/lib/refresh";
 import {
   getRefreshToken,
-  updateAccessCookie,
+  updateSessionFromRefresh,
   clearSessionCookies,
 } from "@/shared/lib/session";
 
-interface BackendRefreshResponse {
-  access_token: string;
-  token_type: string;
-  expires_at: string;
-  user_id: string;
-  perfil: "ADMIN" | "TREINADOR" | "RESPONSAVEL";
-}
-
 /**
- * POST /api/auth/refresh — usa o cookie refresh_token pra emitir novo access.
+ * POST /api/auth/refresh — usa o cookie refresh_token pra renovar a sessão.
+ *
+ * O refresh é rotativo: a resposta do backend traz um refresh token novo e
+ * `updateSessionFromRefresh` regrava os três cookies (access, refresh,
+ * session). Renovações concorrentes são unificadas por `refreshSession`.
  *
  * Chamado:
- *   - automaticamente pelo proxy de API quando recebe 401 (Fase 4)
- *   - manualmente pelo hook useSession quando descobre access expirado
+ *   - automaticamente pelo proxy de API quando recebe 401
+ *   - pelo fluxo de troca de senha, para emitir um access sem a trava de
+ *     senha temporária
  *
- * Se o backend rejeitar (refresh expirado/inválido), limpa todos os cookies
- * — força o usuário a relogar. Não tenta recuperar.
+ * Se o backend rejeitar (refresh expirado/revogado/reusado), limpa todos os
+ * cookies — força o usuário a relogar. Não tenta recuperar.
  */
-export async function POST() {
+export async function POST(req: Request) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
   const refreshToken = await getRefreshToken();
   if (!refreshToken) {
     return NextResponse.json({ error: "Sem refresh token" }, { status: 401 });
   }
 
-  let tokens: BackendRefreshResponse;
   try {
-    tokens = await backendFetch<BackendRefreshResponse>("/auth/refresh", {
-      method: "POST",
-      body: { refresh_token: refreshToken },
+    const tokens = await refreshSession(refreshToken);
+    await updateSessionFromRefresh(tokens);
+    return NextResponse.json({
+      ok: true,
+      expiresAt: tokens.expires_at,
+      deveTrocarSenha: tokens.deve_trocar_senha === true,
     });
   } catch (err) {
     const e = err as BackendError;
@@ -47,8 +52,4 @@ export async function POST() {
       { status: e.status ?? 502 },
     );
   }
-
-  await updateAccessCookie(tokens.access_token, tokens.expires_at);
-
-  return NextResponse.json({ ok: true, expiresAt: tokens.expires_at });
 }

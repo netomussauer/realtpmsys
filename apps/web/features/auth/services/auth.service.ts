@@ -12,6 +12,8 @@ import type { LoginFormData } from "@/features/auth/schemas/login.schema";
 import type { Perfil, Session } from "@/features/auth/types/auth.types";
 
 export interface LoginResult {
+  /** Senha temporária: o usuário deve trocá-la antes de usar o sistema. */
+  deveTrocarSenha?: boolean;
   userId: string;
   perfil: Perfil;
 }
@@ -28,7 +30,28 @@ export const authService = {
     if (!res.ok) {
       throw new Error(json.error ?? `Falha ao autenticar (HTTP ${res.status})`);
     }
-    return { userId: json.userId, perfil: json.perfil };
+    return {
+      userId: json.userId,
+      perfil: json.perfil,
+      deveTrocarSenha: json.deveTrocarSenha === true,
+    };
+  },
+
+  /**
+   * Troca da PRÓPRIA senha. Passa por `/api/auth/senha` (e não pelo proxy
+   * genérico) porque o BFF precisa anexar o refresh token do cookie httpOnly.
+   * Em caso de sucesso o BFF já devolve a sessão renovada nos cookies.
+   */
+  async trocarSenha(data: { senhaAtual: string; novaSenha: string }): Promise<void> {
+    const res = await fetch("/api/auth/senha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      credentials: "same-origin",
+    });
+    if (res.ok) return;
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(json.error ?? `Falha ao trocar a senha (HTTP ${res.status})`);
   },
 
   async logout(): Promise<void> {

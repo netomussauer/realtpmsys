@@ -115,8 +115,9 @@ Todos com `httpOnly: true`, `sameSite: 'lax'` e `secure: true` em produção.
 | Método | Path                | Função                                                  |
 | ------ | ------------------- | ------------------------------------------------------- |
 | POST   | `/api/auth/login`   | Encaminha pro backend, grava 3 cookies                  |
-| POST   | `/api/auth/refresh` | Renova `rtpm_access` usando `rtpm_refresh`              |
-| POST   | `/api/auth/logout`  | Limpa cookies (backend é stateless, nada server-side)   |
+| POST   | `/api/auth/refresh` | Renova a sessão (refresh **rotativo**: regrava access + refresh + session) |
+| POST   | `/api/auth/senha`   | Troca da própria senha (anexa o refresh do cookie; renova a sessão) |
+| POST   | `/api/auth/logout`  | Revoga a família do refresh no backend e limpa os cookies |
 | GET    | `/api/auth/session` | Devolve sessão atual (com verify JWT) ou 401            |
 
 ### Defesas em camadas

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
 import { z } from "zod";
 import { backendFetch, type BackendError } from "@/shared/lib/backend";
 import { setSessionCookies } from "@/shared/lib/session";
@@ -23,6 +24,10 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
   let parsed;
   try {
     parsed = bodySchema.parse(await req.json());
@@ -41,8 +46,10 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     const e = err as BackendError;
-    // Backend retorna 401 para credenciais inválidas — propaga limpo.
-    const status = e.status === 401 ? 401 : 502;
+    // 401 = credenciais inválidas; 429 = e-mail bloqueado por tentativas
+    // demais (a mensagem do backend já diz para aguardar). Ambos são
+    // propagados; qualquer outro erro vira 502.
+    const status = e.status === 401 || e.status === 429 ? e.status : 502;
     return NextResponse.json(
       { error: e.message ?? "Falha ao autenticar" },
       { status },
@@ -55,5 +62,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     userId: tokens.user_id,
     perfil: tokens.perfil,
+    // Senha temporária: o client leva o usuário direto à troca de senha.
+    deveTrocarSenha: tokens.deve_trocar_senha === true,
   });
 }

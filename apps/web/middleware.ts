@@ -24,7 +24,26 @@ import type { Perfil, Session } from "@/features/auth/types/auth.types";
  */
 
 /** Rotas protegidas — qualquer prefixo aqui exige sessão. */
-const PROTECTED_PREFIXES = ["/dashboard", "/atletas", "/turmas", "/treinos", "/mensalidades", "/relatorios"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/atletas",
+  "/turmas",
+  "/treinos",
+  "/mensalidades",
+  "/relatorios",
+  "/contas",
+  "/minha-conta",
+];
+
+/** Gestão de contas: exclusiva de ADMIN (TREINADOR e RESPONSAVEL são redirecionados). */
+const ADMIN_EXCLUSIVE_PREFIXES = ["/contas"];
+
+/**
+ * Sessão com senha temporária (`deveTrocarSenha`): a única tela liberada é a
+ * de troca de senha. O backend também bloqueia (403 PASSWORD_CHANGE_REQUIRED),
+ * então isto é só para a UX não cair em telas que vão falhar.
+ */
+const TROCA_SENHA_PATH = "/minha-conta";
 
 /** Quando o RESPONSAVEL acessa essas rotas, redireciona pro dashboard. */
 const ADMIN_ONLY_PREFIXES = ["/turmas", "/treinos", "/relatorios"];
@@ -51,6 +70,7 @@ function parseSessionCookie(value: string | undefined): Session | null {
 
 function perfilTemAcesso(perfil: Perfil, pathname: string): boolean {
   if (perfil === "ADMIN") return true;
+  if (hasPrefix(pathname, ADMIN_EXCLUSIVE_PREFIXES)) return false;
   if (perfil === "RESPONSAVEL") {
     // Responsável só acessa dashboard, atletas (filtrado) e mensalidades (filtrado).
     return !hasPrefix(pathname, ADMIN_ONLY_PREFIXES);
@@ -67,9 +87,20 @@ export function middleware(req: NextRequest) {
   const sessionCookie = req.cookies.get(SESSION_COOKIE)?.value;
   const session = parseSessionCookie(sessionCookie);
 
-  // 1. Acessando /login já autenticado → manda pra dashboard.
+  // 1. Acessando /login já autenticado → manda pra dashboard (ou, com senha
+  //    temporária, direto pra troca de senha).
   if (pathname === "/login" && session) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    const destino = session.deveTrocarSenha ? TROCA_SENHA_PATH : "/dashboard";
+    return NextResponse.redirect(new URL(destino, req.url));
+  }
+
+  // 1b. Senha temporária: só a troca de senha é acessível.
+  if (
+    session?.deveTrocarSenha &&
+    isProtected(pathname) &&
+    !hasPrefix(pathname, [TROCA_SENHA_PATH])
+  ) {
+    return NextResponse.redirect(new URL(TROCA_SENHA_PATH, req.url));
   }
 
   // 2. Acessando área protegida sem sessão → redirect pro login.

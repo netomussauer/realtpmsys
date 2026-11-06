@@ -17,25 +17,35 @@ var (
 	ErrAtletaJaSuspenso = errors.New("atleta já está suspenso")
 
 	// Financeiro
-	ErrMensalidadeJaPaga      = errors.New("mensalidade já foi paga")
-	ErrMensalidadeCancelada   = errors.New("mensalidade cancelada não pode ser paga")
+	ErrMensalidadeJaPaga                  = errors.New("mensalidade já foi paga")
+	ErrMensalidadeCancelada               = errors.New("mensalidade cancelada não pode ser paga")
 	ErrMensalidadePagaNaoPodeSerCancelada = errors.New("mensalidade paga não pode ser cancelada")
-	ErrContratoAtivoExistente = errors.New("atleta já possui contrato ativo")
-	ErrPlanoInativo           = errors.New("plano está inativo")
-	ErrDiasSemanasInvalido    = errors.New("dias por semana deve ser 2, 3 ou 5")
-	ErrValorInvalido          = errors.New("valor deve ser positivo")
-	ErrDiaVencimentoInvalido  = errors.New("dia de vencimento deve estar entre 1 e 28")
+	ErrContratoAtivoExistente             = errors.New("atleta já possui contrato ativo")
+	ErrPlanoInativo                       = errors.New("plano está inativo")
+	ErrDiasSemanasInvalido                = errors.New("dias por semana deve ser 2, 3 ou 5")
+	ErrValorInvalido                      = errors.New("valor deve ser positivo")
+	ErrDiaVencimentoInvalido              = errors.New("dia de vencimento deve estar entre 1 e 28")
 
 	// Turmas
-	ErrTurmaSemVagas          = errors.New("turma atingiu capacidade máxima")
-	ErrTurmaNaoAtiva          = errors.New("turma não está ATIVA")
-	ErrAtletaJaMatriculado    = errors.New("atleta já possui matrícula ativa nesta turma")
-	ErrFaixaEtariaInvalida    = errors.New("faixa etária inválida: min deve ser <= max, entre 4 e 18")
-	ErrIdadeForaDaFaixa       = errors.New("idade do atleta está fora da faixa etária da turma")
+	ErrTurmaSemVagas       = errors.New("turma atingiu capacidade máxima")
+	ErrTurmaNaoAtiva       = errors.New("turma não está ATIVA")
+	ErrAtletaJaMatriculado = errors.New("atleta já possui matrícula ativa nesta turma")
+	ErrFaixaEtariaInvalida = errors.New("faixa etária inválida: min deve ser <= max, entre 4 e 18")
+	ErrIdadeForaDaFaixa    = errors.New("idade do atleta está fora da faixa etária da turma")
 
 	// Identidade
 	ErrCredenciaisInvalidas = errors.New("email ou senha inválidos")
 	ErrUsuarioInativo       = errors.New("usuário inativo")
+
+	// Gestão de contas
+	ErrEmailInvalido       = errors.New("e-mail inválido")
+	ErrEmailEmUso          = errors.New("e-mail já está em uso")
+	ErrPerfilInvalido      = errors.New("perfil inválido")
+	ErrSenhaFraca          = errors.New("senha não atende aos requisitos mínimos")
+	ErrSenhaAtualIncorreta = errors.New("senha atual incorreta")
+	ErrSenhaIgualAnterior  = errors.New("a nova senha deve ser diferente da atual")
+	ErrUltimoAdmin         = errors.New("operação deixaria o sistema sem nenhum administrador ativo")
+	ErrAutoModificacao     = errors.New("operação não permitida sobre a própria conta")
 )
 
 // DomainError enriquece um erro sentinela com contexto adicional.

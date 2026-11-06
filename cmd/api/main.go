@@ -25,6 +25,7 @@ import (
 	"github.com/realtpmsys/realtpmsys/internal/config"
 	infrahttp "github.com/realtpmsys/realtpmsys/internal/infrastructure/http"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/ratelimit"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/jobs"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/metrics"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/migrate"
@@ -96,6 +97,7 @@ func run(logger *slog.Logger) error {
 	planoRepo := repository.NewPgxPlanoRepository(pool)
 	contratoRepo := repository.NewPgxContratoRepository(pool)
 	usuarioRepo := repository.NewPgxUsuarioRepository(pool)
+	refreshTokenRepo := repository.NewPgxRefreshTokenRepository(pool)
 	atletaRepo := repository.NewPgxAtletaRepository(pool)
 	turmaRepo := repository.NewPgxTurmaRepository(pool)
 	matriculaRepo := repository.NewPgxMatriculaRepository(pool)
@@ -116,8 +118,14 @@ func run(logger *slog.Logger) error {
 	criarPlano := appplano.NewCriarPlanoUseCase(planoRepo)
 
 	// Use Cases — Identidade
-	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
-	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
+	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, refreshTokenRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
+	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, refreshTokenRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
+	logoutUseCase := appidentidade.NewLogoutUseCase(refreshTokenRepo)
+	criarUsuario := appidentidade.NewCriarUsuarioUseCase(usuarioRepo)
+	atualizarUsuario := appidentidade.NewAtualizarUsuarioUseCase(usuarioRepo)
+	alterarStatusUsuario := appidentidade.NewAlterarStatusUsuarioUseCase(usuarioRepo)
+	redefinirSenha := appidentidade.NewRedefinirSenhaUseCase(usuarioRepo)
+	alterarMinhaSenha := appidentidade.NewAlterarMinhaSenhaUseCase(usuarioRepo, refreshTokenRepo)
 
 	// Use Cases — Atletas (+ Responsavel + Uniforme)
 	cadastrarAtleta := appatleta.NewCadastrarAtletaUseCase(atletaRepo)
@@ -156,7 +164,7 @@ func run(logger *slog.Logger) error {
 
 	// Handlers
 	handlers := infrahttp.Handlers{
-		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase),
+		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase, logoutUseCase, ratelimit.New(10, 15*time.Minute)),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
 		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo, atletaRepo),
 		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),
@@ -167,6 +175,7 @@ func run(logger *slog.Logger) error {
 		Contrato:    handler.NewContratoHandler(firmarContrato),
 		Plano:       handler.NewPlanoHandler(criarPlano, planoRepo),
 		Relatorio:   handler.NewRelatorioHandler(relatorioService),
+		Usuario:     handler.NewUsuarioHandler(criarUsuario, atualizarUsuario, alterarStatusUsuario, redefinirSenha, alterarMinhaSenha, usuarioRepo, ratelimit.New(5, 15*time.Minute)),
 	}
 
 	// Scheduler

@@ -10,6 +10,9 @@ import (
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/response"
 )
 
+// PathTrocaSenha é a única rota liberada para sessões com senha temporária.
+const PathTrocaSenha = "/api/v1/me/senha"
+
 type contextKey string
 
 const (
@@ -23,6 +26,9 @@ type Claims struct {
 	UserID string `json:"user_id"`
 	Perfil string `json:"perfil"`
 	Typ    string `json:"typ,omitempty"`
+	// DeveTrocarSenha (claim `dts`) marca sessão com senha temporária: só a
+	// troca de senha é permitida até o usuário concluí-la.
+	DeveTrocarSenha bool `json:"dts,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -62,6 +68,14 @@ func Auth(secret string) func(http.Handler) http.Handler {
 			if claims.Typ != "" && claims.Typ != "access" {
 				response.WriteJSON(w, http.StatusUnauthorized, map[string]string{
 					"error": "tipo de token inválido — use o access token, não o refresh",
+				})
+				return
+			}
+
+			if claims.DeveTrocarSenha && r.URL.Path != PathTrocaSenha {
+				response.WriteJSON(w, http.StatusForbidden, map[string]string{
+					"error": "troca de senha obrigatória",
+					"code":  "PASSWORD_CHANGE_REQUIRED",
 				})
 				return
 			}

@@ -37,7 +37,8 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, shared.ErrMensalidadeJaPaga),
 		errors.Is(err, shared.ErrAtletaJaMatriculado),
 		errors.Is(err, shared.ErrTurmaSemVagas),
-		errors.Is(err, shared.ErrTurmaNaoAtiva):
+		errors.Is(err, shared.ErrTurmaNaoAtiva),
+		errors.Is(err, shared.ErrEmailEmUso):
 		p = Problem{
 			Type:     baseURL + "/conflict",
 			Title:    "Conflito de estado",
@@ -60,7 +61,14 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		errors.Is(err, shared.ErrDiaVencimentoInvalido),
 		errors.Is(err, shared.ErrCPFInvalido),
 		errors.Is(err, shared.ErrFaixaEtariaInvalida),
-		errors.Is(err, shared.ErrIdadeForaDaFaixa):
+		errors.Is(err, shared.ErrIdadeForaDaFaixa),
+		errors.Is(err, shared.ErrEmailInvalido),
+		errors.Is(err, shared.ErrPerfilInvalido),
+		errors.Is(err, shared.ErrSenhaFraca),
+		errors.Is(err, shared.ErrSenhaAtualIncorreta),
+		errors.Is(err, shared.ErrSenhaIgualAnterior),
+		errors.Is(err, shared.ErrUltimoAdmin),
+		errors.Is(err, shared.ErrAutoModificacao):
 		p = Problem{
 			Type:     baseURL + "/domain-error",
 			Title:    "Regra de negócio violada",

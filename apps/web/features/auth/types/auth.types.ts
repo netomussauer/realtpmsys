@@ -18,6 +18,8 @@ export interface Session {
   email: string;
   perfil: Perfil;
   accessExpiresAt: string;  // ISO 8601
+  /** Senha temporária: o usuário só pode acessar a troca de senha. */
+  deveTrocarSenha?: boolean;
 }
 
 /**
@@ -32,6 +34,23 @@ export interface BackendLoginResponse {
   refresh_expires_at: string;  // ISO
   user_id: string;
   perfil: Perfil;
+  deve_trocar_senha?: boolean;
+}
+
+/**
+ * Resposta do backend Go ao POST /auth/refresh. O refresh é rotativo: a
+ * resposta traz um refresh token NOVO e o anterior deixa de valer, então
+ * o BFF precisa regravar o cookie a cada renovação.
+ */
+export interface BackendRefreshResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_at: string;          // ISO
+  refresh_expires_at: string;  // ISO
+  user_id: string;
+  perfil: Perfil;
+  deve_trocar_senha?: boolean;
 }
 
 /** Claims que o backend Go embute no JWT — vide internal/application/identidade/use_cases.go */

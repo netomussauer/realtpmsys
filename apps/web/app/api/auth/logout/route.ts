@@ -1,17 +1,36 @@
 import { NextResponse } from "next/server";
-import { clearSessionCookies } from "@/shared/lib/session";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
+import { backendFetch } from "@/shared/lib/backend";
+import { clearSessionCookies, getRefreshToken } from "@/shared/lib/session";
 
 /**
- * POST /api/auth/logout — limpa cookies do navegador.
+ * POST /api/auth/logout — encerra a sessão.
  *
- * Backend Go é stateless (não há sessão server-side), então não chama
- * o backend. Limpar os cookies do browser é suficiente — qualquer
- * requisição subsequente sem `rtpm_access` vai falhar no `Auth`
- * middleware do backend. O JWT continua valido até expirar
- * (trade-off documentado em ADR-008 do backend), mas sem o cookie o
- * browser nunca mais o envia.
+ * O refresh token vive no banco do backend (revogável), então o logout
+ * primeiro o revoga lá (`POST /auth/logout`, derruba a família inteira) e só
+ * então limpa os cookies do navegador. A revogação é *best effort*: se o
+ * backend estiver fora, os cookies são limpos mesmo assim — o usuário sai
+ * deste navegador de qualquer forma, e o refresh token expira por conta própria.
+ *
+ * O access token continua válido até expirar (JWT stateless; TTL curto), mas
+ * sem o cookie o navegador nunca mais o envia.
  */
-export async function POST() {
+export async function POST(req: Request) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
+  const refreshToken = await getRefreshToken();
+  if (refreshToken) {
+    try {
+      await backendFetch("/auth/logout", {
+        method: "POST",
+        body: { refresh_token: refreshToken },
+      });
+    } catch {
+      // Ignorado de propósito — ver comentário acima.
+    }
+  }
   await clearSessionCookies();
   return NextResponse.json({ ok: true });
 }

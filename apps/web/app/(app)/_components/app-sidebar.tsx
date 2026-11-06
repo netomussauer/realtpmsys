@@ -9,6 +9,8 @@ import {
   ClipboardList,
   Wallet,
   BarChart3,
+  ShieldCheck,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
@@ -61,6 +63,18 @@ const navItems: ReadonlyArray<NavItem> = [
     label: "Relatórios",
     icon: BarChart3,
     perfis: ["ADMIN", "TREINADOR"],
+  },
+  {
+    href: "/contas",
+    label: "Contas",
+    icon: ShieldCheck,
+    perfis: ["ADMIN"],
+  },
+  {
+    href: "/minha-conta",
+    label: "Minha conta",
+    icon: UserCog,
+    perfis: ["ADMIN", "TREINADOR", "RESPONSAVEL"],
   },
 ];
 

@@ -276,6 +276,37 @@ flowchart LR
 **Razão:** Kaniko roda 100% in-cluster — sem necessidade de Docker daemon, sem GitHub Actions externo, sem expor secrets do registry para CI externo. Tekton já estava instalado no lab. Tag `sha-<7chars>` é imutável e permite rollback.
 **Trade-off:** Mirror PULL do Gitea (do GitHub) não dispara webhook nativamente — webhook só funciona em push direto ao Gitea. Workaround atual: invocar EventListener via curl após `mirror-sync` ou disparar PipelineRun manual via `kubectl create`. Para automação completa, ou migrar para Gitea-primary (push reverso pro GitHub) ou rodar CronJob de polling.
 
+#### ADR-013 — Gestão de contas, refresh token persistido/rotativo e senha temporária *(adicionado em 2026-11-06)*
+
+**Contexto:** as contas (`admin@…`, `responsavel@…`) eram semeadas por migration com senha conhecida e **não havia como trocá-la** pelo sistema (nem endpoint de gestão de usuários). Os tokens eram 100% stateless: desativar um usuário só valia no refresh, e não existia logout server-side.
+
+**Decisão:**
+
+- **Gestão de contas (ADMIN):** `/api/v1/usuarios` (listar, criar, editar nome/perfil, ativar/desativar, redefinir senha) e, para qualquer perfil, `PATCH /api/v1/me/senha`. Front: `/contas` (ADMIN) e `/minha-conta`.
+- **Senha temporária gerada pelo sistema** (16 caracteres, `crypto/rand`, sem caracteres ambíguos), devolvida **uma única vez** (`Cache-Control: no-store`; no front fica só na memória do componente, nunca no cache do TanStack Query). A conta nasce/é redefinida com `deve_trocar_senha=true`.
+- **Trava de troca obrigatória em duas camadas:** o access token de quem tem senha temporária leva o claim `dts`; o middleware `Auth` do Go responde `403 PASSWORD_CHANGE_REQUIRED` em tudo, exceto `PATCH /api/v1/me/senha`. O middleware do Next redireciona para `/minha-conta` (só UX; a barreira real é o backend).
+- **Refresh token persistido, rotativo e revogável:** tabela `refresh_tokens` guarda só o **hash SHA-256**. Cada login abre uma *família*; `/auth/refresh` consome o token e emite um novo na mesma família (expiração absoluta mantida). **Reuso** de token já consumido fora de 10 s revoga a família inteira; dentro da janela só recusa (corrida legítima do BFF). `POST /auth/logout` revoga a família.
+- **Revogação nos eventos certos:** desativar, redefinir senha e mudar perfil revogam todos os refresh tokens do usuário; trocar a própria senha revoga os demais (poupando a sessão atual).
+- **Proteções de acesso administrativo:** um ADMIN não desativa nem rebaixa a si mesmo, não redefine a própria senha pelo fluxo de ADMIN e o sistema nunca fica sem ADMIN ativo.
+- **Política de senha:** mínimo 10 caracteres, ao menos uma letra e um dígito, máximo 72 **bytes** (limite do bcrypt, que ignora o excedente em silêncio). Hash bcrypt custo 12.
+- **BFF acompanha a rotação:** `updateSessionFromRefresh` regrava access + refresh + session; `refreshSession` faz *single-flight* por refresh token para que as várias chamadas paralelas de uma tela, ao receberem 401 juntas, não reapresentem o mesmo token. Troca de senha passa por `/api/auth/senha` porque só o BFF enxerga o refresh token (cookie httpOnly).
+
+**Razão:** fecha o risco das credenciais semeadas sem depender de acesso manual ao banco; dá ao ADMIN controle real de acesso (desativar = sessão encerrada, não só "bloqueio no próximo refresh"); a rotação com detecção de reuso limita o estrago de um refresh token vazado.
+
+**Trade-off / limites conhecidos:**
+
+- O **access token continua stateless**: uma conta desativada pode usá-lo até expirar. Por isso o manifesto fixa `JWT_ACCESS_EXPIRES_MINUTES=15` (era 60): a revogação derruba o refresh na hora e o access residual dura no máximo 15 min. Checar `ativo` por request no middleware eliminaria a janela ao custo de uma consulta por chamada.
+- **Quebra de compatibilidade no deploy:** refresh tokens emitidos antes da migration `000004` não existem no banco e passam a ser recusados — cada usuário precisa fazer login de novo uma vez.
+- O single-flight do BFF vale por processo Node (o Deployment web roda com 1 réplica). Com mais réplicas, a janela de 10 s do backend cobre a corrida residual.
+- `refresh_tokens` cresce sem limpeza automática: tokens expirados/revogados ficam na tabela (índice por `expira_em` já criado para um futuro job de purga).
+- As contas semeadas por `000002`/`000003` continuam existindo com senha conhecida até alguém trocá-la/desativá-la pela nova tela — **ação operacional pendente após o deploy**.
+- **Rate limiting parcial:** `/auth/login` bloqueia o e-mail após 10 tentativas com credencial inválida em 15 min e `/me/senha` bloqueia o usuário após 5 com senha atual incorreta (429 + `Retry-After`; em memória, 1 réplica). A cota é reservada de forma atômica (rajadas paralelas não passam do limite), erros que não são de credencial a devolvem, e a chave é o digest SHA-256 do e-mail com teto rígido de 10 mil chaves. A chave é o e-mail, não o IP — o backend só enxerga o IP do BFF —, o que permite a um atacante bloquear a conta de uma vítima (inclusive a de um ADMIN) enquanto repetir as tentativas; o bloqueio é em memória e some ao reiniciar o pod. Mitigação futura: o BFF repassar o IP real do cliente (aceito só da rede interna) e o bloqueio principal passar a ser por par e-mail+IP. Não há limite por IP real hoje.
+- **Sessão do BFF com access de 15 min:** o cookie do access some do navegador junto com o JWT, mas o refresh dura dias. O proxy `/api/v1/*` e `GET /api/auth/session` renovam a sessão (single-flight, refresh rotativo) quando só o refresh existe; o layout do servidor, que não pode gravar cookies, renderiza com os metadados do cookie de sessão nesse intervalo. Sem isso, o usuário caía para `/login` e o middleware o devolvia ao `/dashboard` (loop). `/me/senha` faz o bcrypt fora da transação e revalida o estado sob lock (conflito 409 se a conta mudou no meio).
+- **Concorrência:** toda alteração de conta roda em `ContaRepository.Modificar` (transação + `pg_advisory_xact_lock` global + `FOR UPDATE`), o que serializa as operações de conta e fecha o TOCTOU do "último ADMIN" e o lost update. A rotação do refresh consome o token com `UPDATE ... WHERE revogado_em IS NULL`, então só uma de N requisições concorrentes vence. Se a emissão do filho falhar depois de consumir o pai, o usuário precisa entrar de novo (falha fechada).
+- **BFF (CSRF):** as rotas que mudam estado exigem `Sec-Fetch-Site: same-origin|none` ou `Origin` do próprio host, porque `sameSite=lax` ignora a porta e outros serviços do mesmo host do lab seriam "same-site". O proxy `/api/v1/*` recusa segmentos de caminho com `..`, barras, `?`, hash ou `%`. O `?next=` do login só aceita caminhos internos. Respostas de `/api/*` saem com `Cache-Control: no-store`.
+
+**Quando revisitar:** checagem de `ativo` por request; job de purga de `refresh_tokens` (`DELETE ... WHERE expira_em < now() - interval '7 days'`, há índice em `expira_em`); auditoria de eventos de conta (quem criou/desativou/promoveu quem — hoje só o log HTTP com `user_id` e path); limite por IP real do cliente; exigir `JWT_SECRET` com 32+ bytes.
+
 #### ADR-012 — Frontend Next.js no mesmo repo + BFF + cookies httpOnly *(adicionado em 2026-05-26)*
 
 **Decisão:** Frontend Next.js 15 versionado em `apps/web/` dentro deste mesmo repo (monorepo simples, sem pnpm workspace); deploy via Tekton+Kaniko+ArgoCD igual ao backend Go (mesmas ferramentas, manifests separados em `infra/k8s/web/` e `infra/tekton/web/`). Autenticação pelo padrão **BFF (Backend-for-Frontend)**: route handlers do próprio Next.js (`app/api/auth/*` e proxy `app/api/v1/[...path]`) armazenam tokens JWT em cookies `httpOnly`+`sameSite=lax`; bundle do browser **nunca** vê o JWT. Frontend faz `jwtVerify` HMAC com o mesmo `JWT_SECRET` do backend Go (via Secret K8s compartilhado).
@@ -296,7 +327,7 @@ flowchart LR
 
 - Migração para `pnpm workspaces` se o frontend ficar grande demais e/ou virem mais apps (mobile?).
 - Adoção de Ingress + cert-manager → remove `COOKIE_SECURE=false`.
-- Refresh token revogável (hoje stateless, ADR-008 do backend) → necessita storage server-side, possivelmente Redis do shared-infra.
+- ~~Refresh token revogável~~ — resolvido no ADR-013 (persistido no PostgreSQL, rotativo e revogável).
 
 #### ADR-011 — `pg_stat_statements` como observabilidade de DB; OTel SDK em stand-by *(adicionado em 2026-05-22)*
 
@@ -554,7 +585,13 @@ Endpoints **implementados** no MVP. Marcador 🚧 = previsto mas ainda não impl
 |---|---|---|---|
 | GET | `/health` | Público | Healthcheck (sem auth) |
 | POST | `/auth/login` | Público | Gera par JWT HS256 — `access` (60min) + `refresh` (7 dias por padrão) |
-| POST | `/auth/refresh` | Refresh token no body | Renova `access_token`; **não rotaciona** o refresh |
+| POST | `/auth/refresh` | Refresh token no body | Renova a sessão; **rotativo** — devolve novo `access_token` + novo `refresh_token` (o anterior é consumido; reuso revoga a família). ADR-013 |
+| POST | `/auth/logout` | Refresh token no body | Revoga a família do refresh token (idempotente, 204) |
+| GET/POST | `/api/v1/usuarios` | ADMIN | Lista / cria conta (senha temporária gerada, devolvida uma vez) |
+| GET/PUT | `/api/v1/usuarios/{id}` | ADMIN | Detalhe / edita nome e perfil |
+| PATCH | `/api/v1/usuarios/{id}/ativar` e `/desativar` | ADMIN | Reativa / desativa (desativar revoga as sessões) |
+| POST | `/api/v1/usuarios/{id}/redefinir-senha` | ADMIN | Nova senha temporária (revoga as sessões) |
+| PATCH | `/api/v1/me/senha` | Qualquer perfil | Troca a própria senha; único endpoint liberado com senha temporária |
 | GET | `/api/v1/atletas?nome=&status=&page=&per_page=` | ADMIN, TREINADOR | Lista paginada |
 | POST | `/api/v1/atletas` | ADMIN | Cadastra atleta |
 | GET | `/api/v1/atletas/{id}` | ADMIN, TREINADOR | Detalhe |

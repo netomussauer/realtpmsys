@@ -65,7 +65,7 @@ spec:
             - name: APP_MIGRATIONS_PATH
               value: "/app/migrations"
             - name: JWT_ACCESS_EXPIRES_MINUTES
-              value: "60"
+              value: "15"
             - name: JWT_REFRESH_EXPIRES_DAYS
               value: "7"
             - name: DB_MAX_CONNS
