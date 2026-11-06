@@ -549,6 +549,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetail" }
+        "429":
+          description: |
+            Muitas tentativas malsucedidas para este e-mail (10 em 15 min).
+            Header `Retry-After` indica os segundos até poder tentar de novo.
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
 
   /auth/refresh:
     post:
@@ -763,6 +772,7 @@ paths:
         "204": { description: Senha alterada }
         "400": { description: Campos obrigatórios ausentes ou payload inválido, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
         "422": { description: "Senha atual incorreta, nova senha fraca ou igual à atual", content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+        "429": { description: "5 tentativas com senha atual incorreta em 15 min; veja o header Retry-After", headers: { Retry-After: { schema: { type: integer } } }, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
 
   # ---- ATLETAS ---------------------------------------------------------------
 
