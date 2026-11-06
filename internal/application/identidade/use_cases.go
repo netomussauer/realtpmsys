@@ -62,6 +62,10 @@ type LoginUseCase struct {
 }
 
 func NewLoginUseCase(usuarios identidade.Repository, tokens identidade.RefreshTokenRepository, jwtSecret string, accessExpiresMins, refreshExpiresDays int) *LoginUseCase {
+	// Calcula o hash fictício agora (na subida do processo), não na primeira
+	// tentativa com e-mail inexistente: do contrário essa tentativa custaria
+	// ~250 ms a mais e viraria um oráculo fraco de existência de conta.
+	hashFicticio()
 	return &LoginUseCase{
 		usuarios:           usuarios,
 		tokens:             tokens,

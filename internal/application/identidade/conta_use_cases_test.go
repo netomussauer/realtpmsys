@@ -62,7 +62,15 @@ func (f *fakeContas) GetByID(_ context.Context, id uuid.UUID) (*identidade.Usuar
 	if f.getErr != nil {
 		return nil, f.getErr
 	}
-	return f.porID[id], nil
+	u := f.porID[id]
+	if u == nil {
+		return nil, nil
+	}
+	// Cópia, como o repositório real (cada leitura devolve uma entidade nova):
+	// sem isso, uma alteração concorrente simulada mudaria também o que o use
+	// case leu antes, escondendo conflitos.
+	cp := *u
+	return &cp, nil
 }
 func (f *fakeContas) List(context.Context, identidade.ListFilter) ([]*identidade.Usuario, int64, error) {
 	return nil, 0, nil
@@ -559,4 +567,64 @@ func TestHashRefreshToken_DeterministicoE64Hex(t *testing.T) {
 	assert.Equal(t, h, HashRefreshToken("abc"))
 	assert.NotEqual(t, h, HashRefreshToken("abd"))
 	assert.NotContains(t, h, "abc")
+}
+
+// contasMudamNoMeio simula que, entre a leitura que valida a senha atual e a
+// transação, outra operação (ex.: ADMIN redefiniu a senha) alterou a conta.
+type contasMudamNoMeio struct {
+	*fakeContas
+	antes func()
+}
+
+func (c contasMudamNoMeio) Modificar(
+	ctx context.Context,
+	id uuid.UUID,
+	fn func(context.Context, *identidade.Usuario, identidade.ContaTx) error,
+) (*identidade.Usuario, error) {
+	c.antes()
+	return c.fakeContas.Modificar(ctx, id, fn)
+}
+
+func TestAlterarMinhaSenha_ContaAlteradaNoMeioNaoEhSobrescrita(t *testing.T) {
+	u := novoUsr(t, "u@example.com", identidade.PerfilResponsavel)
+	base := newFakeContas(u)
+	redefinidaPeloAdmin := "hash-que-o-admin-gravou"
+	repo := contasMudamNoMeio{fakeContas: base, antes: func() { base.porID[u.ID].SenhaHash = redefinidaPeloAdmin }}
+
+	err := NewAlterarMinhaSenhaUseCase(repo, newFakeTokens()).Execute(context.Background(), AlterarMinhaSenhaInput{
+		UsuarioID: u.ID, SenhaAtual: "senhaAtual123", NovaSenha: "outraSenha456",
+	})
+
+	assert.ErrorIs(t, err, shared.ErrConflict)
+	assert.Equal(t, redefinidaPeloAdmin, u.SenhaHash, "a senha definida pelo ADMIN não foi sobrescrita")
+	assert.Empty(t, base.revogouTodos)
+}
+
+func TestAlterarMinhaSenha_DesativadaNoMeioNaoEhReativada(t *testing.T) {
+	u := novoUsr(t, "u@example.com", identidade.PerfilResponsavel)
+	base := newFakeContas(u)
+	repo := contasMudamNoMeio{fakeContas: base, antes: func() { base.porID[u.ID].Ativo = false }}
+
+	err := NewAlterarMinhaSenhaUseCase(repo, newFakeTokens()).Execute(context.Background(), AlterarMinhaSenhaInput{
+		UsuarioID: u.ID, SenhaAtual: "senhaAtual123", NovaSenha: "outraSenha456",
+	})
+
+	assert.ErrorIs(t, err, shared.ErrUsuarioInativo)
+	assert.False(t, u.Ativo)
+}
+
+// O bcrypt não pode rodar dentro de Modificar (seguraria o lock global e uma
+// conexão do pool). A senha errada nem chega a abrir a transação.
+func TestAlterarMinhaSenha_SenhaErradaNaoAbreTransacao(t *testing.T) {
+	u := novoUsr(t, "u@example.com", identidade.PerfilResponsavel)
+	base := newFakeContas(u)
+	abriu := false
+	repo := contasMudamNoMeio{fakeContas: base, antes: func() { abriu = true }}
+
+	err := NewAlterarMinhaSenhaUseCase(repo, newFakeTokens()).Execute(context.Background(), AlterarMinhaSenhaInput{
+		UsuarioID: u.ID, SenhaAtual: "errada1234567", NovaSenha: "outraSenha456",
+	})
+
+	assert.ErrorIs(t, err, shared.ErrSenhaAtualIncorreta)
+	assert.False(t, abriu, "falhas de validação não seguram o lock global")
 }

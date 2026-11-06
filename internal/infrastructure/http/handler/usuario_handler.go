@@ -263,8 +263,10 @@ func (h *UsuarioHandler) AlterarMinhaSenha(w http.ResponseWriter, r *http.Reques
 		RefreshToken: body.RefreshToken,
 	})
 	if err != nil {
-		if errors.Is(err, shared.ErrSenhaAtualIncorreta) {
-			h.senhaLimiter.Fail(chave)
+		// Só a senha atual incorreta consome a cota (é o que se tenta adivinhar);
+		// senha nova fraca, conta inativa etc. a devolvem.
+		if !errors.Is(err, shared.ErrSenhaAtualIncorreta) {
+			h.senhaLimiter.Refund(chave)
 		}
 		response.WriteError(w, r, err)
 		return
@@ -309,7 +311,7 @@ func toUsuarioResponse(u *identidade.Usuario) usuarioResponse {
 // permitirTentativa consulta o limitador de falhas. Quando a chave está
 // bloqueada responde 429 (RFC 7807 + Retry-After) e devolve false.
 func permitirTentativa(w http.ResponseWriter, r *http.Request, l *ratelimit.FailureLimiter, key string) bool {
-	ok, espera := l.Allow(key)
+	ok, espera := l.Reserve(key)
 	if ok {
 		return true
 	}

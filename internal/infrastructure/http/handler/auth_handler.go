@@ -37,12 +37,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+	// 254 é o máximo de um e-mail (RFC 5321); evita chaves enormes no limitador.
+	if len(body.Email) > 254 {
+		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "e-mail inválido"})
+		return
+	}
 	if body.Email == "" || body.Senha == "" {
 		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "email e senha são obrigatórios"})
 		return
 	}
 
-	// Freio de força bruta: bloqueia o e-mail após falhas repetidas (a chave é
+	// Freio de força bruta: cada tentativa é reservada de forma atômica e o
+	// e-mail bloqueia após 10 em 15 min (a chave é
 	// o e-mail digitado, exista a conta ou não — não vaza se ela existe).
 	if !permitirTentativa(w, r, h.loginLimiter, body.Email) {
 		return
@@ -53,8 +59,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Senha: body.Senha,
 	})
 	if err != nil {
-		if errors.Is(err, shared.ErrCredenciaisInvalidas) {
-			h.loginLimiter.Fail(body.Email)
+		// Só credencial inválida consome a cota; erros de outra natureza
+		// (conta inativa de quem acertou a senha, falha interna) a devolvem.
+		if !errors.Is(err, shared.ErrCredenciaisInvalidas) {
+			h.loginLimiter.Refund(body.Email)
 		}
 		response.WriteError(w, r, err)
 		return

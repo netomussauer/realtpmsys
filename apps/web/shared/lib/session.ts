@@ -138,7 +138,7 @@ export async function setSessionCookies(
  * atualizados juntos. O e-mail do session cookie é preservado (o backend
  * não o devolve).
  */
-export async function updateSessionFromRefresh(resp: BackendRefreshResponse): Promise<void> {
+export async function updateSessionFromRefresh(resp: BackendRefreshResponse): Promise<Session> {
   const store = await cookies();
   const now = Date.now();
   const accessTtl = Math.max(60, Math.floor((new Date(resp.expires_at).getTime() - now) / 1000));
@@ -164,6 +164,7 @@ export async function updateSessionFromRefresh(resp: BackendRefreshResponse): Pr
     deveTrocarSenha: resp.deve_trocar_senha === true,
   };
   store.set(SESSION_COOKIE, JSON.stringify(session), baseCookieOptions({ maxAgeSeconds: refreshTtl }));
+  return session;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

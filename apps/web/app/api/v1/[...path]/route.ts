@@ -109,7 +109,13 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
     return NextResponse.json({ error: "Caminho inválido" }, { status: 400 });
   }
 
-  const accessToken = await getAccessToken();
+  // O cookie do access vive o mesmo que o JWT (15 min) e some do navegador ao
+  // expirar, enquanto o refresh dura dias. Sem access mas com refresh, a
+  // sessão ainda é válida: renova antes de desistir.
+  let accessToken = await getAccessToken();
+  if (!accessToken) {
+    accessToken = await trySilentRefresh();
+  }
   if (!accessToken) {
     return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   }

@@ -1,9 +1,13 @@
-// Package ratelimit limita tentativas de autenticação malsucedidas.
+// Package ratelimit limita tentativas de autenticação.
 //
-// É um limitador de FALHAS (não de requisições): só as tentativas que erram a
-// credencial contam, e um sucesso zera o contador. Fica em memória do
-// processo — o backend roda com 1 réplica; com mais, o limite efetivo
-// multiplica pelo número de réplicas (ainda útil, só menos estrito).
+// Cada tentativa é RESERVADA no momento da checagem (Reserve), de forma
+// atômica: sob uma rajada paralela, só as primeiras `max` passam — checar e
+// registrar em passos separados deixaria todas passarem antes de qualquer
+// registro. Uma tentativa que não deve contar (erro que não é de credencial)
+// é devolvida com Refund; um sucesso zera o contador com Reset.
+//
+// Fica em memória do processo — o backend roda com 1 réplica; com mais, o
+// limite efetivo multiplica pelo número de réplicas (ainda útil, menos estrito).
 //
 // A chave é escolhida pelo chamador. No login usamos o e-mail e não o IP: o
 // backend recebe as chamadas pelo BFF do Next, então todos os usuários
@@ -16,37 +20,49 @@
 package ratelimit
 
 import (
+	"crypto/sha256"
 	"sync"
 	"time"
 )
 
-// maxChaves é o teto de chaves rastreadas; ao atingi-lo, entradas vencidas
-// são varridas (evita crescimento sem limite sob ataque com e-mails aleatórios).
+// maxChaves é o teto rígido de chaves rastreadas. Ao atingi-lo, entradas
+// vencidas são varridas e, se ainda não houver espaço, uma chave arbitrária é
+// descartada: a memória nunca passa de maxChaves × (32 B + max timestamps),
+// mesmo sob ataque com e-mails todos diferentes.
 const maxChaves = 10000
 
+// intervaloVarredura evita varrer o mapa inteiro a cada tentativa quando ele
+// está cheio (custo O(n) sob o mutex).
+const intervaloVarredura = time.Minute
+
 type FailureLimiter struct {
-	mu      sync.Mutex
-	max     int
-	window  time.Duration
-	now     func() time.Time
-	entries map[string][]time.Time
+	mu            sync.Mutex
+	max           int
+	window        time.Duration
+	now           func() time.Time
+	entries       map[[32]byte][]time.Time
+	ultimaVarrida time.Time
 }
 
-// New cria um limitador que bloqueia a chave após `max` falhas dentro de
-// `window`. O bloqueio dura até a falha mais antiga sair da janela.
+// New cria um limitador que bloqueia a chave após `max` tentativas dentro de
+// `window`. O bloqueio dura até a tentativa mais antiga sair da janela.
 func New(max int, window time.Duration) *FailureLimiter {
 	return &FailureLimiter{
 		max:     max,
 		window:  window,
 		now:     time.Now,
-		entries: make(map[string][]time.Time),
+		entries: make(map[[32]byte][]time.Time),
 	}
 }
 
-// recentes devolve as falhas ainda dentro da janela (mu já travado).
-func (l *FailureLimiter) recentes(key string) []time.Time {
+// chave reduz a string do chamador a um digest de tamanho fixo: uma chave de
+// 16 KiB (corpo máximo) ocupa o mesmo que uma de 10 bytes.
+func chave(s string) [32]byte { return sha256.Sum256([]byte(s)) }
+
+// recentes devolve as tentativas ainda dentro da janela (mu já travado).
+func (l *FailureLimiter) recentes(k [32]byte) []time.Time {
 	corte := l.now().Add(-l.window)
-	fs := l.entries[key]
+	fs := l.entries[k]
 	i := 0
 	for i < len(fs) && !fs[i].After(corte) {
 		i++
@@ -54,60 +70,89 @@ func (l *FailureLimiter) recentes(key string) []time.Time {
 	if i > 0 {
 		fs = fs[i:]
 		if len(fs) == 0 {
-			delete(l.entries, key)
+			delete(l.entries, k)
 		} else {
-			l.entries[key] = fs
+			l.entries[k] = fs
 		}
 	}
 	return fs
 }
 
-// Allow informa se a chave pode tentar. Se bloqueada, devolve quanto falta
-// para a próxima tentativa ser aceita (para o cabeçalho Retry-After).
-// Um *FailureLimiter nil nunca bloqueia.
-func (l *FailureLimiter) Allow(key string) (bool, time.Duration) {
-	if l == nil {
-		return true, 0
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	fs := l.recentes(key)
-	if len(fs) < l.max {
-		return true, 0
-	}
-	// Bloqueada até a falha mais antiga que ainda conta sair da janela.
-	espera := fs[len(fs)-l.max].Add(l.window).Sub(l.now())
-	if espera < time.Second {
-		espera = time.Second
-	}
-	return false, espera
-}
-
-// Fail registra uma tentativa malsucedida.
-func (l *FailureLimiter) Fail(key string) {
-	if l == nil {
+// abrirEspaco garante que cabe mais uma chave (mu já travado).
+func (l *FailureLimiter) abrirEspaco() {
+	if len(l.entries) < maxChaves {
 		return
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if len(l.entries) >= maxChaves {
-		corte := l.now().Add(-l.window)
+	agora := l.now()
+	if agora.Sub(l.ultimaVarrida) >= intervaloVarredura {
+		l.ultimaVarrida = agora
+		corte := agora.Add(-l.window)
 		for k, fs := range l.entries {
 			if len(fs) == 0 || !fs[len(fs)-1].After(corte) {
 				delete(l.entries, k)
 			}
 		}
 	}
-	fs := l.recentes(key)
-	l.entries[key] = append(fs, l.now())
+	// Ainda cheio (ataque com muitas chaves ativas): descarta uma qualquer.
+	for k := range l.entries {
+		if len(l.entries) < maxChaves {
+			break
+		}
+		delete(l.entries, k)
+	}
 }
 
-// Reset zera as falhas da chave (login bem-sucedido).
+// Reserve tenta consumir uma tentativa. Se a chave ainda tem cota, registra a
+// tentativa e devolve (true, 0). Se está bloqueada, NÃO registra e devolve
+// (false, espera) — a espera alimenta o cabeçalho Retry-After.
+// Um *FailureLimiter nil nunca bloqueia.
+func (l *FailureLimiter) Reserve(key string) (bool, time.Duration) {
+	if l == nil {
+		return true, 0
+	}
+	k := chave(key)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	fs := l.recentes(k)
+	if len(fs) >= l.max {
+		// Bloqueada até a tentativa mais antiga que ainda conta sair da janela.
+		espera := fs[len(fs)-l.max].Add(l.window).Sub(l.now())
+		if espera < time.Second {
+			espera = time.Second
+		}
+		return false, espera
+	}
+	if len(fs) == 0 {
+		l.abrirEspaco()
+	}
+	l.entries[k] = append(fs, l.now())
+	return true, 0
+}
+
+// Refund devolve a tentativa mais recente da chave (ex.: o erro não foi de
+// credencial e não deve esgotar a cota).
+func (l *FailureLimiter) Refund(key string) {
+	if l == nil {
+		return
+	}
+	k := chave(key)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	fs := l.entries[k]
+	switch {
+	case len(fs) > 1:
+		l.entries[k] = fs[:len(fs)-1]
+	case len(fs) == 1:
+		delete(l.entries, k)
+	}
+}
+
+// Reset zera as tentativas da chave (sucesso).
 func (l *FailureLimiter) Reset(key string) {
 	if l == nil {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.entries, key)
+	delete(l.entries, chave(key))
 }

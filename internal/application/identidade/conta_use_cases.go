@@ -260,40 +260,60 @@ func NewAlterarMinhaSenhaUseCase(contas identidade.ContaRepository, tokens ident
 }
 
 func (uc *AlterarMinhaSenhaUseCase) Execute(ctx context.Context, in AlterarMinhaSenhaInput) error {
-	// Descobre (fora da transação, é só leitura) qual família de refresh
-	// poupar. Um token que não é do usuário nunca define a sessão poupada.
+	// Tudo que é caro (2× bcrypt, ~250 ms cada) roda ANTES da transação: o
+	// lock global de contas e uma conexão do pool ficam presos só pelo tempo
+	// de um UPDATE. Sem isso, rajadas em /me/senha (qualquer perfil
+	// autenticado) esgotariam o pool e travariam até o login.
+	atual, err := uc.contas.GetByID(ctx, in.UsuarioID)
+	if err != nil {
+		return fmt.Errorf("buscar usuário: %w", err)
+	}
+	if atual == nil {
+		return shared.ErrNotFound
+	}
+	if !atual.Ativo {
+		return shared.ErrUsuarioInativo
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(atual.SenhaHash), []byte(in.SenhaAtual)); err != nil {
+		return shared.ErrSenhaAtualIncorreta
+	}
+	if in.NovaSenha == in.SenhaAtual {
+		return shared.ErrSenhaIgualAnterior
+	}
+	if err := identidade.ValidarSenha(in.NovaSenha); err != nil {
+		return err
+	}
+	novoHash, err := hashSenha(in.NovaSenha)
+	if err != nil {
+		return err
+	}
+
+	// Descobre qual família de refresh poupar (só leitura). Um token que não
+	// é do usuário nunca define a sessão poupada.
 	var poupar *identidade.RefreshToken
 	if in.RefreshToken != "" {
-		atual, err := uc.tokens.GetByHash(ctx, HashRefreshToken(in.RefreshToken))
+		rt, err := uc.tokens.GetByHash(ctx, HashRefreshToken(in.RefreshToken))
 		if err != nil {
 			return fmt.Errorf("buscar refresh token: %w", err)
 		}
-		if atual != nil && atual.UsuarioID == in.UsuarioID && atual.RevogadoEm == nil {
-			poupar = atual
+		if rt != nil && rt.UsuarioID == in.UsuarioID && rt.RevogadoEm == nil {
+			poupar = rt
 		}
 	}
 
-	_, err := uc.contas.Modificar(ctx, in.UsuarioID, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
-		// Estado relido sob lock: se um ADMIN desativou a conta no meio do
-		// caminho, a troca é recusada em vez de reativá-la.
+	_, err = uc.contas.Modificar(ctx, in.UsuarioID, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+		// Revalida sob lock. Se a conta foi desativada ou teve a senha trocada
+		// (ex.: um ADMIN a redefiniu) entre a leitura e agora, a verificação da
+		// senha atual feita acima já não vale: recusa em vez de sobrescrever.
 		if !u.Ativo {
 			return shared.ErrUsuarioInativo
 		}
-		if err := bcrypt.CompareHashAndPassword([]byte(u.SenhaHash), []byte(in.SenhaAtual)); err != nil {
-			return shared.ErrSenhaAtualIncorreta
+		if u.SenhaHash != atual.SenhaHash {
+			return shared.Newf(shared.ErrConflict, "a conta foi alterada durante a troca de senha; tente novamente")
 		}
-		if in.NovaSenha == in.SenhaAtual {
-			return shared.ErrSenhaIgualAnterior
-		}
-		if err := identidade.ValidarSenha(in.NovaSenha); err != nil {
-			return err
-		}
-		hash, err := hashSenha(in.NovaSenha)
-		if err != nil {
-			return err
-		}
-		u.DefinirSenha(hash, false)
+		u.DefinirSenha(novoHash, false)
 
+		var err error
 		if poupar != nil {
 			err = tx.RevogarTokensDoUsuarioExceto(ctx, u.ID, poupar.FamiliaID)
 		} else {

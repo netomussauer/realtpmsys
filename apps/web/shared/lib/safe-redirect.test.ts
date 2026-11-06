@@ -25,6 +25,10 @@ describe("safeNextPath", () => {
     ["com quebra de linha", "/ok\n//evil.example"],
     ["com tab", "/\t/evil.example"],
     ["byte nulo", "/ok\u0000"],
+    ["dot-segment que normaliza para //", "/.//evil.example"],
+    ["dot-segment duplo que normaliza para //", "/a/..//evil.example"],
+    ["ponto-ponto inicial que normaliza para //", "/..//evil.example"],
+    ["vários dot-segments", "/././/evil.example/x"],
   ])("rejeita %s e usa o fallback", (_nome, entrada) => {
     expect(safeNextPath(entrada)).toBe("/dashboard");
   });
@@ -39,9 +43,16 @@ describe("safeNextPath", () => {
     expect(safeNextPath("https://evil.example", "/minha-conta")).toBe("/minha-conta");
   });
 
-  it("normaliza caminhos com ponto-ponto sem sair da origem", () => {
-    const r = safeNextPath("/a/../../b");
-    expect(r.startsWith("/")).toBe(true);
-    expect(r.startsWith("//")).toBe(false);
+  it("normaliza caminhos com ponto-ponto legítimos sem sair da origem", () => {
+    expect(safeNextPath("/a/../b")).toBe("/b");
+    expect(safeNextPath("/a/../../b")).toBe("/b");
+    expect(safeNextPath("/./turmas")).toBe("/turmas");
+  });
+
+  it("nunca devolve algo que comece com // (propriedade)", () => {
+    const entradas = ["/.//x", "/a/..//x", "/..//x", "/././/x", "//x", "/ok", "/a/b/../..//x", "/%2f/x"];
+    for (const e of entradas) {
+      expect(safeNextPath(e).startsWith("//")).toBe(false);
+    }
   });
 });

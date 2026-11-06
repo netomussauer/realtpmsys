@@ -2,22 +2,34 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "./_components/app-sidebar";
 import { AppHeader } from "./_components/app-header";
-import { getVerifiedSession } from "@/shared/lib/session";
+import { getRefreshToken, getSession, getVerifiedSession } from "@/shared/lib/session";
 
 /**
  * Layout das rotas protegidas (sistema de gestão).
  *
  * Server Component — lê a sessão dos cookies httpOnly via
- * `getVerifiedSession()` (valida JWT com jose). Sem sessão válida →
- * redirect 307 pra /login. Isso é defesa-em-profundidade junto com o
- * middleware Next: caso o middleware seja contornado, o layout
- * server-side ainda barra a renderização e o backend Go nunca recebe
- * request com cookie inválido.
+ * `getVerifiedSession()` (valida JWT com jose). Defesa em profundidade junto
+ * com o middleware Next; a autorização real de cada dado é do backend Go.
+ *
+ * O access token vive 15 min e o cookie dele some ao expirar, mas a sessão
+ * continua válida enquanto o refresh token existir. Um Server Component não
+ * pode regravar cookies, então não dá para renovar aqui; exigir um access
+ * vivo mandaria o usuário para /login a cada 15 min — e o middleware o
+ * devolveria para /dashboard (há cookie de sessão), formando um loop. Por
+ * isso, sem access válido mas COM refresh, renderizamos com os metadados do
+ * cookie de sessão (usados só para a UI: menu e cabeçalho) e deixamos a
+ * renovação para a primeira chamada de API / `useSession()`, que podem gravar
+ * cookies. Sem refresh → /login.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await getVerifiedSession();
+  let session = await getVerifiedSession();
   if (!session) {
-    redirect("/login");
+    const refresh = await getRefreshToken();
+    const meta = refresh ? await getSession() : null;
+    if (!meta) {
+      redirect("/login");
+    }
+    session = meta;
   }
 
   return (
