@@ -27,6 +27,7 @@ type Handlers struct {
 	Contrato    *handler.ContratoHandler
 	Plano       *handler.PlanoHandler
 	Relatorio   *handler.RelatorioHandler
+	Usuario     *handler.UsuarioHandler
 }
 
 // NewRouter constrói o router com todas as rotas e middlewares registrados.
@@ -202,6 +203,23 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 				r.Get("/frequencia/{atleta_id}", h.Relatorio.FrequenciaAtleta)
 				r.Get("/frequencia/turma/{turma_id}", h.Relatorio.FrequenciaTurma)
 			})
+		})
+
+		// Gestão de contas — apenas ADMIN
+		r.Route("/usuarios", func(r chi.Router) {
+			r.Use(middleware.RequirePerfil("ADMIN"))
+			r.Get("/", h.Usuario.List)
+			r.Post("/", h.Usuario.Criar)
+			r.Get("/{id}", h.Usuario.GetByID)
+			r.Put("/{id}", h.Usuario.Atualizar)
+			r.Patch("/{id}/ativar", h.Usuario.Ativar)
+			r.Patch("/{id}/desativar", h.Usuario.Desativar)
+			r.Post("/{id}/redefinir-senha", h.Usuario.RedefinirSenha)
+		})
+
+		// Conta do próprio usuário — qualquer perfil autenticado
+		r.Route("/me", func(r chi.Router) {
+			r.Patch("/senha", h.Usuario.AlterarMinhaSenha)
 		})
 
 		// Mensalidades

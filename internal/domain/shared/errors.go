@@ -45,7 +45,7 @@ var (
 	ErrSenhaAtualIncorreta = errors.New("senha atual incorreta")
 	ErrSenhaIgualAnterior  = errors.New("a nova senha deve ser diferente da atual")
 	ErrUltimoAdmin         = errors.New("operação deixaria o sistema sem nenhum administrador ativo")
-	ErrAutoModificacao     = errors.New("um administrador não pode desativar nem rebaixar a própria conta")
+	ErrAutoModificacao     = errors.New("operação não permitida sobre a própria conta")
 )
 
 // DomainError enriquece um erro sentinela com contexto adicional.

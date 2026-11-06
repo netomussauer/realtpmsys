@@ -96,6 +96,7 @@ func run(logger *slog.Logger) error {
 	planoRepo := repository.NewPgxPlanoRepository(pool)
 	contratoRepo := repository.NewPgxContratoRepository(pool)
 	usuarioRepo := repository.NewPgxUsuarioRepository(pool)
+	refreshTokenRepo := repository.NewPgxRefreshTokenRepository(pool)
 	atletaRepo := repository.NewPgxAtletaRepository(pool)
 	turmaRepo := repository.NewPgxTurmaRepository(pool)
 	matriculaRepo := repository.NewPgxMatriculaRepository(pool)
@@ -118,6 +119,11 @@ func run(logger *slog.Logger) error {
 	// Use Cases — Identidade
 	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
 	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
+	criarUsuario := appidentidade.NewCriarUsuarioUseCase(usuarioRepo)
+	atualizarUsuario := appidentidade.NewAtualizarUsuarioUseCase(usuarioRepo, refreshTokenRepo)
+	alterarStatusUsuario := appidentidade.NewAlterarStatusUsuarioUseCase(usuarioRepo, refreshTokenRepo)
+	redefinirSenha := appidentidade.NewRedefinirSenhaUseCase(usuarioRepo, refreshTokenRepo)
+	alterarMinhaSenha := appidentidade.NewAlterarMinhaSenhaUseCase(usuarioRepo, refreshTokenRepo)
 
 	// Use Cases — Atletas (+ Responsavel + Uniforme)
 	cadastrarAtleta := appatleta.NewCadastrarAtletaUseCase(atletaRepo)
@@ -167,6 +173,7 @@ func run(logger *slog.Logger) error {
 		Contrato:    handler.NewContratoHandler(firmarContrato),
 		Plano:       handler.NewPlanoHandler(criarPlano, planoRepo),
 		Relatorio:   handler.NewRelatorioHandler(relatorioService),
+		Usuario:     handler.NewUsuarioHandler(criarUsuario, atualizarUsuario, alterarStatusUsuario, redefinirSenha, alterarMinhaSenha, usuarioRepo),
 	}
 
 	// Scheduler
