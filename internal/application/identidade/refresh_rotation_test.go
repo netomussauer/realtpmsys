@@ -2,9 +2,12 @@ package identidade
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/realtpmsys/realtpmsys/internal/domain/identidade"
 	"github.com/realtpmsys/realtpmsys/internal/domain/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -220,4 +223,120 @@ func TestLogout_RevogaSoAFamiliaDoToken(t *testing.T) {
 	require.NoError(t, NewLogoutUseCase(tokens).Execute(context.Background(), a))
 	assert.NotNil(t, tokens.porHash[HashRefreshToken(a)].RevogadoEm)
 	assert.Nil(t, tokens.porHash[HashRefreshToken(b)].RevogadoEm, "outro dispositivo continua logado")
+}
+
+// tokensPerdeCorrida simula a segunda de duas requisições concorrentes: leu o
+// registro ainda ativo (GetByHash), mas a outra já o consumiu quando tenta
+// revogá-lo (RevogarSeAtivo → false).
+type tokensPerdeCorrida struct{ *fakeTokens }
+
+func (tokensPerdeCorrida) RevogarSeAtivo(context.Context, uuid.UUID) (bool, error) { return false, nil }
+
+func TestRefresh_PerdedorDaCorridaNaoEmiteFilho(t *testing.T) {
+	usuario := novoUsuarioComSenha(t, "x")
+	base := newFakeTokens()
+	tk := refreshParaTeste(t, base, usuario, time.Now().Add(time.Hour))
+	antes := len(base.porHash)
+
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{usuarioByID: usuario}, tokensPerdeCorrida{base}, testSecret, 30)
+	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: tk})
+
+	assert.Nil(t, out)
+	assert.ErrorIs(t, err, shared.ErrCredenciaisInvalidas)
+	assert.Len(t, base.porHash, antes, "quem perde a corrida não persiste nenhum token filho: a cadeia não bifurca")
+}
+
+func TestRefresh_ConcorrenciaReal_UmSoVencedor(t *testing.T) {
+	usuario := novoUsuarioComSenha(t, "x")
+	tokens := &tokensSeguros{fakeTokens: newFakeTokens()}
+	tk := refreshParaTeste(t, tokens.fakeTokens, usuario, time.Now().Add(time.Hour))
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{usuarioByID: usuario}, tokens, testSecret, 30)
+
+	const n = 20
+	resultados := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			_, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: tk})
+			resultados <- err
+		}()
+	}
+	sucessos := 0
+	for i := 0; i < n; i++ {
+		if <-resultados == nil {
+			sucessos++
+		}
+	}
+	assert.Equal(t, 1, sucessos, "exatamente uma requisição consome o token; as outras são recusadas")
+}
+
+// tokensSeguros serializa o acesso ao fake (que usa um map) para o teste de
+// concorrência; a atomicidade de RevogarSeAtivo é a propriedade sob teste.
+type tokensSeguros struct {
+	*fakeTokens
+	mu sync.Mutex
+}
+
+func (t *tokensSeguros) Save(ctx context.Context, r *identidade.RefreshToken) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.fakeTokens.Save(ctx, r)
+}
+func (t *tokensSeguros) GetByHash(ctx context.Context, h string) (*identidade.RefreshToken, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.fakeTokens.GetByHash(ctx, h)
+}
+func (t *tokensSeguros) RevogarSeAtivo(ctx context.Context, id uuid.UUID) (bool, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.fakeTokens.RevogarSeAtivo(ctx, id)
+}
+
+func TestLogin_SemOraculoDeEnumeracao(t *testing.T) {
+	ativo := novoUsuarioComSenha(t, "senha-certa")
+	inativo := novoUsuarioComSenha(t, "senha-certa")
+	inativo.Ativo = false
+
+	tests := []struct {
+		name    string
+		usuario *identidade.Usuario
+		senha   string
+		wantIs  error
+	}{
+		{"e-mail inexistente", nil, "qualquer", shared.ErrCredenciaisInvalidas},
+		{"ativo, senha errada", ativo, "errada", shared.ErrCredenciaisInvalidas},
+		{"inativo, senha errada → igual a inexistente (não revela que está inativo)", inativo, "errada", shared.ErrCredenciaisInvalidas},
+		{"inativo, senha certa → só quem sabe a senha vê que está inativo", inativo, "senha-certa", shared.ErrUsuarioInativo},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uc := NewLoginUseCase(&fakeUsuarioRepo{usuarioByEmail: tt.usuario}, newFakeTokens(), testSecret, 30, 7)
+			out, err := uc.Execute(context.Background(), LoginInput{Email: "x@example.com", Senha: tt.senha})
+			assert.Nil(t, out)
+			assert.ErrorIs(t, err, tt.wantIs)
+		})
+	}
+}
+
+func TestLogin_EmailInexistenteTambemPagaOCustoDoBcrypt(t *testing.T) {
+	// Com custo alto o bcrypt domina o tempo: se o caminho "inexistente"
+	// pulasse o bcrypt, ele seria ordens de grandeza mais rápido.
+	antigo := bcryptCost
+	bcryptCost = 10
+	defer func() { bcryptCost = antigo }()
+	hashFicticioOnce = sync.Once{} // recalcula o fictício no custo do teste
+
+	existente := novoUsuarioComSenha(t, "senha-certa")
+	medir := func(u *identidade.Usuario) time.Duration {
+		uc := NewLoginUseCase(&fakeUsuarioRepo{usuarioByEmail: u}, newFakeTokens(), testSecret, 30, 7)
+		ini := time.Now()
+		_, _ = uc.Execute(context.Background(), LoginInput{Email: "x@example.com", Senha: "errada"})
+		return time.Since(ini)
+	}
+	medir(nil) // aquece o hash fictício (primeira chamada calcula)
+	dInexistente := medir(nil)
+	dExistente := medir(existente)
+
+	assert.Greater(t, dInexistente, dExistente/4,
+		"e-mail inexistente deve custar o mesmo bcrypt (inexistente=%v existente=%v)", dInexistente, dExistente)
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	appidentidade "github.com/realtpmsys/realtpmsys/internal/application/identidade"
 	"github.com/realtpmsys/realtpmsys/internal/domain/identidade"
+	"github.com/realtpmsys/realtpmsys/internal/domain/shared"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/ratelimit"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/response"
 )
 
@@ -24,6 +27,9 @@ type UsuarioHandler struct {
 	redefinir    *appidentidade.RedefinirSenhaUseCase
 	alterarSenha *appidentidade.AlterarMinhaSenhaUseCase
 	contas       identidade.ContaRepository
+	// senhaLimiter freia tentativas de senha atual errada em /me/senha (oráculo
+	// da senha para quem roubou um access token); nil desliga (testes).
+	senhaLimiter *ratelimit.FailureLimiter
 }
 
 func NewUsuarioHandler(
@@ -33,10 +39,11 @@ func NewUsuarioHandler(
 	redefinir *appidentidade.RedefinirSenhaUseCase,
 	alterarSenha *appidentidade.AlterarMinhaSenhaUseCase,
 	contas identidade.ContaRepository,
+	senhaLimiter *ratelimit.FailureLimiter,
 ) *UsuarioHandler {
 	return &UsuarioHandler{
 		criar: criar, atualizar: atualizar, status: status,
-		redefinir: redefinir, alterarSenha: alterarSenha, contas: contas,
+		redefinir: redefinir, alterarSenha: alterarSenha, contas: contas, senhaLimiter: senhaLimiter,
 	}
 }
 
@@ -245,6 +252,10 @@ func (h *UsuarioHandler) AlterarMinhaSenha(w http.ResponseWriter, r *http.Reques
 		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "senha_atual e nova_senha são obrigatórias"})
 		return
 	}
+	chave := "senha:" + userID.String()
+	if !permitirTentativa(w, r, h.senhaLimiter, chave) {
+		return
+	}
 	err := h.alterarSenha.Execute(r.Context(), appidentidade.AlterarMinhaSenhaInput{
 		UsuarioID:    userID,
 		SenhaAtual:   body.SenhaAtual,
@@ -252,9 +263,13 @@ func (h *UsuarioHandler) AlterarMinhaSenha(w http.ResponseWriter, r *http.Reques
 		RefreshToken: body.RefreshToken,
 	})
 	if err != nil {
+		if errors.Is(err, shared.ErrSenhaAtualIncorreta) {
+			h.senhaLimiter.Fail(chave)
+		}
 		response.WriteError(w, r, err)
 		return
 	}
+	h.senhaLimiter.Reset(chave)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -289,4 +304,26 @@ func toUsuarioResponse(u *identidade.Usuario) usuarioResponse {
 		CriadoEm:        u.CriadoEm.UTC().Format(time.RFC3339),
 		AtualizadoEm:    u.AtualizadoEm.UTC().Format(time.RFC3339),
 	}
+}
+
+// permitirTentativa consulta o limitador de falhas. Quando a chave está
+// bloqueada responde 429 (RFC 7807 + Retry-After) e devolve false.
+func permitirTentativa(w http.ResponseWriter, r *http.Request, l *ratelimit.FailureLimiter, key string) bool {
+	ok, espera := l.Allow(key)
+	if ok {
+		return true
+	}
+	segundos := int(espera.Seconds())
+	if segundos < 1 {
+		segundos = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(segundos))
+	response.WriteJSON(w, http.StatusTooManyRequests, response.Problem{
+		Type:     "https://realtpmsys.local/errors/too-many-attempts",
+		Title:    "Muitas tentativas",
+		Status:   http.StatusTooManyRequests,
+		Detail:   "Muitas tentativas malsucedidas. Aguarde antes de tentar novamente.",
+		Instance: r.URL.Path,
+	})
+	return false
 }

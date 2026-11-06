@@ -232,21 +232,21 @@ type atletaPayload struct {
 }
 
 type atletaResponse struct {
-	ID             uuid.UUID  `json:"id"`
-	Nome           string     `json:"nome"`
-	DataNascimento string     `json:"data_nascimento"`
-	Idade          int        `json:"idade"`
-	CPF            *string    `json:"cpf,omitempty"`
-	RG             *string    `json:"rg,omitempty"`
-	Endereco       *string    `json:"endereco,omitempty"`
-	Cidade         *string    `json:"cidade,omitempty"`
-	UF             *string    `json:"uf,omitempty"`
-	CEP            *string    `json:"cep,omitempty"`
-	Email          *string    `json:"email,omitempty"`
-	Telefone       *string    `json:"telefone,omitempty"`
-	Status         string     `json:"status"`
-	CriadoEm       time.Time  `json:"criado_em"`
-	AtualizadoEm   time.Time  `json:"atualizado_em"`
+	ID             uuid.UUID `json:"id"`
+	Nome           string    `json:"nome"`
+	DataNascimento string    `json:"data_nascimento"`
+	Idade          int       `json:"idade"`
+	CPF            *string   `json:"cpf,omitempty"`
+	RG             *string   `json:"rg,omitempty"`
+	Endereco       *string   `json:"endereco,omitempty"`
+	Cidade         *string   `json:"cidade,omitempty"`
+	UF             *string   `json:"uf,omitempty"`
+	CEP            *string   `json:"cep,omitempty"`
+	Email          *string   `json:"email,omitempty"`
+	Telefone       *string   `json:"telefone,omitempty"`
+	Status         string    `json:"status"`
+	CriadoEm       time.Time `json:"criado_em"`
+	AtualizadoEm   time.Time `json:"atualizado_em"`
 }
 
 func toAtletaResponse(a *domainatleta.Atleta) atletaResponse {

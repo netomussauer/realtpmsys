@@ -57,3 +57,13 @@ FROM usuarios
 WHERE perfil = 'ADMIN'
   AND ativo = TRUE
   AND deletado_em IS NULL;
+
+-- name: GetUsuarioByIDForUpdate :one
+-- Usado dentro de transação (ContaRepository.Modificar): trava a linha para
+-- que o read-modify-write de uma operação de conta não perca updates
+-- concorrentes.
+SELECT *
+FROM usuarios
+WHERE id = $1
+  AND deletado_em IS NULL
+FOR UPDATE;

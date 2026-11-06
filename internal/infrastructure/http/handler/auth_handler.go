@@ -1,12 +1,14 @@
 package handler
 
 import (
-	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	appidentidade "github.com/realtpmsys/realtpmsys/internal/application/identidade"
+	"github.com/realtpmsys/realtpmsys/internal/domain/shared"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/ratelimit"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/response"
 )
 
@@ -15,10 +17,12 @@ type AuthHandler struct {
 	login   *appidentidade.LoginUseCase
 	refresh *appidentidade.RefreshTokenUseCase
 	logout  *appidentidade.LogoutUseCase
+	// loginLimiter freia força bruta por e-mail; nil desliga (testes).
+	loginLimiter *ratelimit.FailureLimiter
 }
 
-func NewAuthHandler(login *appidentidade.LoginUseCase, refresh *appidentidade.RefreshTokenUseCase, logout *appidentidade.LogoutUseCase) *AuthHandler {
-	return &AuthHandler{login: login, refresh: refresh, logout: logout}
+func NewAuthHandler(login *appidentidade.LoginUseCase, refresh *appidentidade.RefreshTokenUseCase, logout *appidentidade.LogoutUseCase, loginLimiter *ratelimit.FailureLimiter) *AuthHandler {
+	return &AuthHandler{login: login, refresh: refresh, logout: logout, loginLimiter: loginLimiter}
 }
 
 // ─── POST /auth/login ────────────────────────────────────────────────────────
@@ -28,8 +32,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 		Senha string `json:"senha"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "payload inválido"})
+	if !decodeBody(w, r, &body) {
 		return
 	}
 
@@ -39,14 +42,24 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Freio de força bruta: bloqueia o e-mail após falhas repetidas (a chave é
+	// o e-mail digitado, exista a conta ou não — não vaza se ela existe).
+	if !permitirTentativa(w, r, h.loginLimiter, body.Email) {
+		return
+	}
+
 	out, err := h.login.Execute(r.Context(), appidentidade.LoginInput{
 		Email: body.Email,
 		Senha: body.Senha,
 	})
 	if err != nil {
+		if errors.Is(err, shared.ErrCredenciaisInvalidas) {
+			h.loginLimiter.Fail(body.Email)
+		}
 		response.WriteError(w, r, err)
 		return
 	}
+	h.loginLimiter.Reset(body.Email)
 
 	response.WriteJSON(w, http.StatusOK, loginResponse{
 		AccessToken:      out.AccessToken,
@@ -66,8 +79,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "payload inválido"})
+	if !decodeBody(w, r, &body) {
 		return
 	}
 	if strings.TrimSpace(body.RefreshToken) == "" {

@@ -253,10 +253,10 @@ func TestResponsavel_TogglePrincipal(t *testing.T) {
 func TestNewUniforme(t *testing.T) {
 	atletaID := uuid.New()
 	tests := []struct {
-		name                            string
-		atletaID                        uuid.UUID
-		camisa, short, chuteira         string
-		wantErr                         error
+		name                    string
+		atletaID                uuid.UUID
+		camisa, short, chuteira string
+		wantErr                 error
 	}{
 		{"válido", atletaID, "M", "12", "34", nil},
 		{"atleta_id Nil rejeitado", uuid.Nil, "M", "12", "34", shared.ErrDomainViolation},

@@ -8,11 +8,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	appidentidade "github.com/realtpmsys/realtpmsys/internal/application/identidade"
 	"github.com/realtpmsys/realtpmsys/internal/domain/identidade"
+	"github.com/realtpmsys/realtpmsys/internal/domain/shared"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/ratelimit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -21,8 +24,9 @@ import (
 // ── fakes ────────────────────────────────────────────────────────────────────
 
 type fakeContasRepo struct {
-	usuarios   map[uuid.UUID]*identidade.Usuario
-	ultimoList identidade.ListFilter
+	usuarios     map[uuid.UUID]*identidade.Usuario
+	ultimoList   identidade.ListFilter
+	revogouTodos []uuid.UUID
 }
 
 func (f *fakeContasRepo) GetByEmail(_ context.Context, email string) (*identidade.Usuario, error) {
@@ -48,27 +52,61 @@ func (f *fakeContasRepo) Save(_ context.Context, u *identidade.Usuario) error {
 	f.usuarios[u.ID] = u
 	return nil
 }
-func (f *fakeContasRepo) ContarAdminsAtivos(context.Context) (int64, error) {
+
+// Modificar é fiel à transação: opera numa cópia e só aplica no sucesso.
+func (f *fakeContasRepo) Modificar(
+	ctx context.Context,
+	id uuid.UUID,
+	fn func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error,
+) (*identidade.Usuario, error) {
+	original := f.usuarios[id]
+	if original == nil {
+		return nil, shared.ErrNotFound
+	}
+	cp := *original
+	tx := &fakeContaTx{f: f}
+	if err := fn(ctx, &cp, tx); err != nil {
+		return nil, err
+	}
+	*original = cp
+	f.revogouTodos = append(f.revogouTodos, tx.todos...)
+	return original, nil
+}
+
+type fakeContaTx struct {
+	f     *fakeContasRepo
+	todos []uuid.UUID
+}
+
+func (t *fakeContaTx) ContarAdminsAtivos(context.Context) (int64, error) {
 	var n int64
-	for _, u := range f.usuarios {
+	for _, u := range t.f.usuarios {
 		if u.Perfil == identidade.PerfilAdmin && u.Ativo {
 			n++
 		}
 	}
 	return n, nil
 }
+func (t *fakeContaTx) RevogarTokensDoUsuario(_ context.Context, id uuid.UUID) error {
+	t.todos = append(t.todos, id)
+	return nil
+}
+func (t *fakeContaTx) RevogarTokensDoUsuarioExceto(_ context.Context, id, _ uuid.UUID) error {
+	t.todos = append(t.todos, id)
+	return nil
+}
 
-type fakeRefreshRepo struct{ revogouTodos []uuid.UUID }
+type fakeRefreshRepo struct{}
 
 func (f *fakeRefreshRepo) Save(context.Context, *identidade.RefreshToken) error { return nil }
 func (f *fakeRefreshRepo) GetByHash(context.Context, string) (*identidade.RefreshToken, error) {
 	return nil, nil
 }
-func (f *fakeRefreshRepo) Revogar(context.Context, uuid.UUID) error        { return nil }
-func (f *fakeRefreshRepo) RevogarFamilia(context.Context, uuid.UUID) error { return nil }
-func (f *fakeRefreshRepo) RevogarTodosDoUsuario(_ context.Context, id uuid.UUID) error {
-	f.revogouTodos = append(f.revogouTodos, id)
-	return nil
+func (f *fakeRefreshRepo) Revogar(context.Context, uuid.UUID) error               { return nil }
+func (f *fakeRefreshRepo) RevogarFamilia(context.Context, uuid.UUID) error        { return nil }
+func (f *fakeRefreshRepo) RevogarTodosDoUsuario(context.Context, uuid.UUID) error { return nil }
+func (f *fakeRefreshRepo) RevogarSeAtivo(context.Context, uuid.UUID) (bool, error) {
+	return true, nil
 }
 func (f *fakeRefreshRepo) RevogarTodosDoUsuarioExceto(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
@@ -96,11 +134,12 @@ func novoUsuarioHarness(t *testing.T) *usuarioHarness {
 	tokens := &fakeRefreshRepo{}
 	h := NewUsuarioHandler(
 		appidentidade.NewCriarUsuarioUseCase(contas),
-		appidentidade.NewAtualizarUsuarioUseCase(contas, tokens),
-		appidentidade.NewAlterarStatusUsuarioUseCase(contas, tokens),
-		appidentidade.NewRedefinirSenhaUseCase(contas, tokens),
+		appidentidade.NewAtualizarUsuarioUseCase(contas),
+		appidentidade.NewAlterarStatusUsuarioUseCase(contas),
+		appidentidade.NewRedefinirSenhaUseCase(contas),
 		appidentidade.NewAlterarMinhaSenhaUseCase(contas, tokens),
 		contas,
+		ratelimit.New(3, time.Minute),
 	)
 	r := chi.NewRouter()
 	r.Get("/usuarios", h.List)
@@ -210,7 +249,7 @@ func TestUsuarioAtualizar(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.Equal(t, "Treinador Silva", alvo.Nome)
 	assert.Equal(t, identidade.PerfilResponsavel, alvo.Perfil)
-	assert.Equal(t, []uuid.UUID{alvo.ID}, h.tokens.revogouTodos, "mudança de perfil derruba as sessões")
+	assert.Equal(t, []uuid.UUID{alvo.ID}, h.contas.revogouTodos, "mudança de perfil derruba as sessões")
 
 	// Admin rebaixando a si mesmo → 422.
 	w = h.do(http.MethodPut, "/usuarios/"+h.admin.ID.String(), h.admin.ID, map[string]string{"perfil": "TREINADOR"})
@@ -227,7 +266,7 @@ func TestUsuarioDesativarEAtivar(t *testing.T) {
 	w := h.do(http.MethodPatch, "/usuarios/"+alvo.ID.String()+"/desativar", h.admin.ID, nil)
 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	assert.False(t, alvo.Ativo)
-	assert.Equal(t, []uuid.UUID{alvo.ID}, h.tokens.revogouTodos)
+	assert.Equal(t, []uuid.UUID{alvo.ID}, h.contas.revogouTodos)
 
 	w = h.do(http.MethodPatch, "/usuarios/"+alvo.ID.String()+"/ativar", h.admin.ID, nil)
 	require.Equal(t, http.StatusOK, w.Code)
@@ -272,7 +311,7 @@ func TestUsuarioAlterarMinhaSenha(t *testing.T) {
 		assert.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
 		assert.Empty(t, w.Body.String())
 		assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(h.admin.SenhaHash), []byte("outraSenha456")))
-		assert.Equal(t, []uuid.UUID{h.admin.ID}, h.tokens.revogouTodos)
+		assert.Equal(t, []uuid.UUID{h.admin.ID}, h.contas.revogouTodos)
 	})
 	t.Run("senha atual errada → 422", func(t *testing.T) {
 		h := novoUsuarioHarness(t)
@@ -307,4 +346,66 @@ func TestUsuarioCriar_CorpoGrandeDemaisEhRejeitado(t *testing.T) {
 	grande := `{"email":"a@b.co","perfil":"ADMIN","nome":"` + strings.Repeat("x", maxBodyBytes) + `"}`
 	w := h.do(http.MethodPost, "/usuarios", h.admin.ID, grande)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUsuarioAlterarMinhaSenha_BloqueiaAposFalhasDeSenhaAtual(t *testing.T) {
+	h := novoUsuarioHarness(t) // limite do harness: 3 falhas
+	errada := map[string]string{"senha_atual": "errada1234567", "nova_senha": "outraSenha456"}
+
+	for i := 0; i < 3; i++ {
+		w := h.do(http.MethodPatch, "/me/senha", h.admin.ID, errada)
+		require.Equal(t, http.StatusUnprocessableEntity, w.Code, "tentativa %d", i+1)
+	}
+
+	// 4ª tentativa — mesmo com a senha CERTA — é barrada pelo limitador.
+	certa := map[string]string{"senha_atual": "senhaAtual123", "nova_senha": "outraSenha456"}
+	w := h.do(http.MethodPatch, "/me/senha", h.admin.ID, certa)
+
+	assert.Equal(t, http.StatusTooManyRequests, w.Code)
+	assert.NotEmpty(t, w.Header().Get("Retry-After"))
+	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(h.admin.SenhaHash), []byte("senhaAtual123")),
+		"a senha não foi trocada enquanto bloqueado")
+}
+
+func TestUsuarioAlterarMinhaSenha_BloqueioEPorUsuario(t *testing.T) {
+	h := novoUsuarioHarness(t)
+	errada := map[string]string{"senha_atual": "errada1234567", "nova_senha": "outraSenha456"}
+	for i := 0; i < 3; i++ {
+		h.do(http.MethodPatch, "/me/senha", h.admin.ID, errada)
+	}
+
+	var outro uuid.UUID
+	for id := range h.contas.usuarios {
+		if id != h.admin.ID {
+			outro = id
+		}
+	}
+	w := h.do(http.MethodPatch, "/me/senha", outro, errada)
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code, "outro usuário não é afetado pelo bloqueio")
+}
+
+func TestUsuarioAlterarMinhaSenha_SucessoZeraAsFalhas(t *testing.T) {
+	h := novoUsuarioHarness(t)
+	errada := map[string]string{"senha_atual": "errada1234567", "nova_senha": "outraSenha456"}
+	h.do(http.MethodPatch, "/me/senha", h.admin.ID, errada)
+	h.do(http.MethodPatch, "/me/senha", h.admin.ID, errada)
+
+	w := h.do(http.MethodPatch, "/me/senha", h.admin.ID, map[string]string{"senha_atual": "senhaAtual123", "nova_senha": "outraSenha456"})
+	require.Equal(t, http.StatusNoContent, w.Code)
+
+	// Após o sucesso o contador recomeça: 2 novas falhas ainda não bloqueiam.
+	nova := map[string]string{"senha_atual": "errada1234567", "nova_senha": "terceiraSenha789"}
+	assert.Equal(t, http.StatusUnprocessableEntity, h.do(http.MethodPatch, "/me/senha", h.admin.ID, nova).Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, h.do(http.MethodPatch, "/me/senha", h.admin.ID, nova).Code)
+}
+
+func TestUsuarioDesativar_FalhaNaoDeixaEstadoParcial(t *testing.T) {
+	h := novoUsuarioHarness(t)
+	// Desativar a si mesmo é recusado dentro da transação: a conta segue ativa
+	// e nenhuma sessão é revogada.
+	w := h.do(http.MethodPatch, "/usuarios/"+h.admin.ID.String()+"/desativar", h.admin.ID, nil)
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	assert.True(t, h.admin.Ativo)
+	assert.Empty(t, h.contas.revogouTodos)
+	_ = shared.ErrAutoModificacao
 }

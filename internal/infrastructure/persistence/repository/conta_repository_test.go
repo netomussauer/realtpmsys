@@ -4,6 +4,9 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -115,25 +118,6 @@ func TestUsuarioRepository_List_FiltrosEPaginacao(t *testing.T) {
 	})
 }
 
-func TestUsuarioRepository_ContarAdminsAtivos(t *testing.T) {
-	pool := setupTestDB(t)
-	truncateAll(t, pool)
-	repo := NewPgxUsuarioRepository(pool)
-	ctx := context.Background()
-
-	a1 := novoUsuarioTeste(t, "a1@test.local", identidade.PerfilAdmin)
-	a2 := novoUsuarioTeste(t, "a2@test.local", identidade.PerfilAdmin)
-	a2.Desativar()
-	t1 := novoUsuarioTeste(t, "t1@test.local", identidade.PerfilTreinador)
-	for _, u := range []*identidade.Usuario{a1, a2, t1} {
-		require.NoError(t, repo.Save(ctx, u))
-	}
-
-	n, err := repo.ContarAdminsAtivos(ctx)
-	require.NoError(t, err)
-	assert.EqualValues(t, 1, n, "só conta ADMIN ativo")
-}
-
 func novoRefreshTeste(usuarioID, familiaID uuid.UUID, hash string) *identidade.RefreshToken {
 	return &identidade.RefreshToken{
 		ID:        uuid.New(),
@@ -213,4 +197,187 @@ func TestRefreshTokenRepository_Revogacoes(t *testing.T) {
 	require.NoError(t, repo.RevogarTodosDoUsuario(ctx, u.ID))
 	assert.True(t, revogado("b1"))
 	assert.False(t, revogado("o1"), "tokens de outro usuário não são afetados")
+}
+
+func TestUsuarioRepository_Modificar_AplicaAlteracaoEContaAdminsNaTransacao(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	repo := NewPgxUsuarioRepository(pool)
+	ctx := context.Background()
+
+	a1 := novoUsuarioTeste(t, "a1@test.local", identidade.PerfilAdmin)
+	a2 := novoUsuarioTeste(t, "a2@test.local", identidade.PerfilAdmin)
+	a2.Desativar()
+	t1 := novoUsuarioTeste(t, "t1@test.local", identidade.PerfilTreinador)
+	for _, u := range []*identidade.Usuario{a1, a2, t1} {
+		require.NoError(t, repo.Save(ctx, u))
+	}
+
+	var admins int64
+	got, err := repo.Modificar(ctx, t1.ID, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+		var err error
+		admins, err = tx.ContarAdminsAtivos(ctx)
+		u.AlterarNome("Novo Nome")
+		return err
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, admins, "só conta ADMIN ativo")
+	assert.Equal(t, "Novo Nome", got.Nome)
+
+	persistido, err := repo.GetByID(ctx, t1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Novo Nome", persistido.Nome)
+}
+
+func TestUsuarioRepository_Modificar_ErroNoCallbackFazRollback(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	repo := NewPgxUsuarioRepository(pool)
+	tokens := NewPgxRefreshTokenRepository(pool)
+	ctx := context.Background()
+
+	u := novoUsuarioTeste(t, "r@test.local", identidade.PerfilTreinador)
+	require.NoError(t, repo.Save(ctx, u))
+	require.NoError(t, tokens.Save(ctx, novoRefreshTeste(u.ID, uuid.New(), "h-rollback")))
+
+	boom := errors.New("falha de negócio")
+	_, err := repo.Modificar(ctx, u.ID, func(ctx context.Context, x *identidade.Usuario, tx identidade.ContaTx) error {
+		x.Desativar()
+		require.NoError(t, tx.RevogarTokensDoUsuario(ctx, x.ID)) // efeito dentro da transação
+		return boom
+	})
+	assert.ErrorIs(t, err, boom)
+
+	depois, err := repo.GetByID(ctx, u.ID)
+	require.NoError(t, err)
+	assert.True(t, depois.Ativo, "a desativação foi desfeita")
+	tk, err := tokens.GetByHash(ctx, "h-rollback")
+	require.NoError(t, err)
+	assert.Nil(t, tk.RevogadoEm, "a revogação dos tokens também foi desfeita")
+}
+
+func TestUsuarioRepository_Modificar_ContaInexistente(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	repo := NewPgxUsuarioRepository(pool)
+
+	_, err := repo.Modificar(context.Background(), uuid.New(), func(context.Context, *identidade.Usuario, identidade.ContaTx) error {
+		t.Fatal("fn não deve rodar para conta inexistente")
+		return nil
+	})
+	assert.ErrorIs(t, err, shared.ErrNotFound)
+}
+
+// Regressão do TOCTOU do "último admin": dois admins se desativam ao mesmo
+// tempo. Sem o lock global, ambos veriam 2 admins ativos e passariam, deixando
+// o sistema sem nenhum. Com o lock, exatamente um sucede.
+func TestUsuarioRepository_Modificar_DoisAdminsSeDesativandoSimultaneamente(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	repo := NewPgxUsuarioRepository(pool)
+	ctx := context.Background()
+
+	a := novoUsuarioTeste(t, "a@test.local", identidade.PerfilAdmin)
+	b := novoUsuarioTeste(t, "b@test.local", identidade.PerfilAdmin)
+	require.NoError(t, repo.Save(ctx, a))
+	require.NoError(t, repo.Save(ctx, b))
+
+	desativar := func(alvo, ator uuid.UUID) error {
+		_, err := repo.Modificar(ctx, alvo, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+			n, err := tx.ContarAdminsAtivos(ctx)
+			if err != nil {
+				return err
+			}
+			if n <= 1 {
+				return shared.ErrUltimoAdmin
+			}
+			u.Desativar()
+			return nil
+		})
+		return err
+	}
+
+	var wg sync.WaitGroup
+	erros := make([]error, 2)
+	wg.Add(2)
+	go func() { defer wg.Done(); erros[0] = desativar(b.ID, a.ID) }() // A desativa B
+	go func() { defer wg.Done(); erros[1] = desativar(a.ID, b.ID) }() // B desativa A
+	wg.Wait()
+
+	sucessos := 0
+	for _, e := range erros {
+		if e == nil {
+			sucessos++
+		} else {
+			assert.ErrorIs(t, e, shared.ErrUltimoAdmin)
+		}
+	}
+	assert.Equal(t, 1, sucessos, "exatamente uma desativação passa")
+
+	var ativos int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM usuarios WHERE perfil='ADMIN' AND ativo`).Scan(&ativos))
+	assert.Equal(t, 1, ativos, "o sistema nunca fica sem administrador ativo")
+}
+
+// Regressão do lost update: a troca de senha do próprio usuário não pode
+// reativar uma conta que um ADMIN desativou no meio do caminho.
+func TestUsuarioRepository_Modificar_NaoPerdeAtualizacaoConcorrente(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	repo := NewPgxUsuarioRepository(pool)
+	ctx := context.Background()
+
+	u := novoUsuarioTeste(t, "u@test.local", identidade.PerfilTreinador)
+	require.NoError(t, repo.Save(ctx, u))
+
+	_, err := repo.Modificar(ctx, u.ID, func(ctx context.Context, x *identidade.Usuario, _ identidade.ContaTx) error {
+		x.Desativar()
+		return nil
+	})
+	require.NoError(t, err)
+
+	// A "troca de senha" relê a conta sob lock, enxerga ativo=false e muda só a senha.
+	_, err = repo.Modificar(ctx, u.ID, func(ctx context.Context, x *identidade.Usuario, _ identidade.ContaTx) error {
+		x.DefinirSenha("novo-hash", false)
+		return nil
+	})
+	require.NoError(t, err)
+
+	final, err := repo.GetByID(ctx, u.ID)
+	require.NoError(t, err)
+	assert.False(t, final.Ativo, "a desativação anterior foi preservada")
+	assert.Equal(t, "novo-hash", final.SenhaHash)
+}
+
+func TestRefreshTokenRepository_RevogarSeAtivo_SoUmaChamadaVence(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	users := NewPgxUsuarioRepository(pool)
+	repo := NewPgxRefreshTokenRepository(pool)
+	ctx := context.Background()
+
+	u := novoUsuarioTeste(t, "r@test.local", identidade.PerfilAdmin)
+	require.NoError(t, users.Save(ctx, u))
+	tk := novoRefreshTeste(u.ID, uuid.New(), "h-claim")
+	require.NoError(t, repo.Save(ctx, tk))
+
+	const n = 10
+	var wg sync.WaitGroup
+	var vencedores int32
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			ok, err := repo.RevogarSeAtivo(ctx, tk.ID)
+			if err == nil && ok {
+				atomic.AddInt32(&vencedores, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.EqualValues(t, 1, vencedores, "UPDATE ... WHERE revogado_em IS NULL é atômico: um só vence")
+
+	ok, err := repo.RevogarSeAtivo(ctx, tk.ID)
+	require.NoError(t, err)
+	assert.False(t, ok, "token já revogado")
 }

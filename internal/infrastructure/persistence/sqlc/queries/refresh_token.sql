@@ -34,3 +34,11 @@ SET revogado_em = NOW()
 WHERE usuario_id = $1
   AND familia_id <> $2
   AND revogado_em IS NULL;
+
+-- name: RevogarRefreshTokenSeAtivo :execrows
+-- Revogação atômica do token pai na rotação: só UMA de duas requisições
+-- concorrentes com o mesmo token afeta a linha (rows = 1).
+UPDATE refresh_tokens
+SET revogado_em = NOW()
+WHERE id = $1
+  AND revogado_em IS NULL;

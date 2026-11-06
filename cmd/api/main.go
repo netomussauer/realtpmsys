@@ -25,6 +25,7 @@ import (
 	"github.com/realtpmsys/realtpmsys/internal/config"
 	infrahttp "github.com/realtpmsys/realtpmsys/internal/infrastructure/http"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/handler"
+	"github.com/realtpmsys/realtpmsys/internal/infrastructure/http/ratelimit"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/jobs"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/metrics"
 	"github.com/realtpmsys/realtpmsys/internal/infrastructure/persistence/migrate"
@@ -121,9 +122,9 @@ func run(logger *slog.Logger) error {
 	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, refreshTokenRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
 	logoutUseCase := appidentidade.NewLogoutUseCase(refreshTokenRepo)
 	criarUsuario := appidentidade.NewCriarUsuarioUseCase(usuarioRepo)
-	atualizarUsuario := appidentidade.NewAtualizarUsuarioUseCase(usuarioRepo, refreshTokenRepo)
-	alterarStatusUsuario := appidentidade.NewAlterarStatusUsuarioUseCase(usuarioRepo, refreshTokenRepo)
-	redefinirSenha := appidentidade.NewRedefinirSenhaUseCase(usuarioRepo, refreshTokenRepo)
+	atualizarUsuario := appidentidade.NewAtualizarUsuarioUseCase(usuarioRepo)
+	alterarStatusUsuario := appidentidade.NewAlterarStatusUsuarioUseCase(usuarioRepo)
+	redefinirSenha := appidentidade.NewRedefinirSenhaUseCase(usuarioRepo)
 	alterarMinhaSenha := appidentidade.NewAlterarMinhaSenhaUseCase(usuarioRepo, refreshTokenRepo)
 
 	// Use Cases — Atletas (+ Responsavel + Uniforme)
@@ -163,7 +164,7 @@ func run(logger *slog.Logger) error {
 
 	// Handlers
 	handlers := infrahttp.Handlers{
-		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase, logoutUseCase),
+		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase, logoutUseCase, ratelimit.New(10, 15*time.Minute)),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
 		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo, atletaRepo),
 		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),
@@ -174,7 +175,7 @@ func run(logger *slog.Logger) error {
 		Contrato:    handler.NewContratoHandler(firmarContrato),
 		Plano:       handler.NewPlanoHandler(criarPlano, planoRepo),
 		Relatorio:   handler.NewRelatorioHandler(relatorioService),
-		Usuario:     handler.NewUsuarioHandler(criarUsuario, atualizarUsuario, alterarStatusUsuario, redefinirSenha, alterarMinhaSenha, usuarioRepo),
+		Usuario:     handler.NewUsuarioHandler(criarUsuario, atualizarUsuario, alterarStatusUsuario, redefinirSenha, alterarMinhaSenha, usuarioRepo, ratelimit.New(5, 15*time.Minute)),
 	}
 
 	// Scheduler

@@ -100,6 +100,35 @@ func (q *Queries) GetUsuarioByID(ctx context.Context, id uuid.UUID) (Usuario, er
 	return i, err
 }
 
+const getUsuarioByIDForUpdate = `-- name: GetUsuarioByIDForUpdate :one
+SELECT id, email, senha_hash, perfil, ativo, criado_em, atualizado_em, deletado_em, nome, deve_trocar_senha
+FROM usuarios
+WHERE id = $1
+  AND deletado_em IS NULL
+FOR UPDATE
+`
+
+// Usado dentro de transação (ContaRepository.Modificar): trava a linha para
+// que o read-modify-write de uma operação de conta não perca updates
+// concorrentes.
+func (q *Queries) GetUsuarioByIDForUpdate(ctx context.Context, id uuid.UUID) (Usuario, error) {
+	row := q.db.QueryRow(ctx, getUsuarioByIDForUpdate, id)
+	var i Usuario
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.SenhaHash,
+		&i.Perfil,
+		&i.Ativo,
+		&i.CriadoEm,
+		&i.AtualizadoEm,
+		&i.DeletadoEm,
+		&i.Nome,
+		&i.DeveTrocarSenha,
+	)
+	return i, err
+}
+
 const listUsuarios = `-- name: ListUsuarios :many
 SELECT id, email, senha_hash, perfil, ativo, criado_em, atualizado_em, deletado_em, nome, deve_trocar_senha
 FROM usuarios

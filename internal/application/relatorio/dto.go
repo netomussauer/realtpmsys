@@ -71,7 +71,7 @@ type ItemFrequenciaTurma struct {
 
 // RelatorioFrequenciaTurma agrega o relatório por turma.
 type RelatorioFrequenciaTurma struct {
-	TurmaID       uuid.UUID
-	TotalTreinos  int64
-	Itens         []ItemFrequenciaTurma
+	TurmaID      uuid.UUID
+	TotalTreinos int64
+	Itens        []ItemFrequenciaTurma
 }

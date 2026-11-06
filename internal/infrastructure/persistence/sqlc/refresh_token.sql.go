@@ -74,6 +74,23 @@ func (q *Queries) RevogarRefreshToken(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const revogarRefreshTokenSeAtivo = `-- name: RevogarRefreshTokenSeAtivo :execrows
+UPDATE refresh_tokens
+SET revogado_em = NOW()
+WHERE id = $1
+  AND revogado_em IS NULL
+`
+
+// Revogação atômica do token pai na rotação: só UMA de duas requisições
+// concorrentes com o mesmo token afeta a linha (rows = 1).
+func (q *Queries) RevogarRefreshTokenSeAtivo(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revogarRefreshTokenSeAtivo, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revogarRefreshTokensDaFamilia = `-- name: RevogarRefreshTokensDaFamilia :exec
 UPDATE refresh_tokens
 SET revogado_em = NOW()

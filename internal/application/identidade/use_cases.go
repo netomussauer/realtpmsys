@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -75,14 +76,20 @@ func (uc *LoginUseCase) Execute(ctx context.Context, in LoginInput) (*LoginOutpu
 	if err != nil {
 		return nil, fmt.Errorf("buscar usuário: %w", err)
 	}
-	if usuario == nil {
+	// Sem oráculo de enumeração: o bcrypt SEMPRE roda (contra um hash fictício
+	// quando o e-mail não existe) e a resposta só distingue "conta inativa" de
+	// quem provou saber a senha. Para qualquer outro caso — e-mail inexistente
+	// ou senha errada, ativo ou não — a resposta e o tempo são os mesmos.
+	hash := hashFicticio()
+	if usuario != nil {
+		hash = usuario.SenhaHash
+	}
+	senhaOK := bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Senha)) == nil
+	if usuario == nil || !senhaOK {
 		return nil, shared.ErrCredenciaisInvalidas
 	}
 	if !usuario.Ativo {
 		return nil, shared.ErrUsuarioInativo
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(usuario.SenhaHash), []byte(in.Senha)); err != nil {
-		return nil, shared.ErrCredenciaisInvalidas
 	}
 
 	accessExp := time.Now().Add(time.Duration(uc.accessExpiresMins) * time.Minute)
@@ -212,14 +219,26 @@ func (uc *RefreshTokenUseCase) Execute(ctx context.Context, in RefreshTokenInput
 		return nil, err
 	}
 
-	// Grava o novo ANTES de revogar o antigo: se a segunda etapa falhar, o
-	// usuário mantém uma sessão válida em vez de ficar sem nenhuma.
+	// Consome o token ANTES de emitir o filho, de forma atômica (UPDATE ...
+	// WHERE revogado_em IS NULL). Das requisições concorrentes com o mesmo
+	// refresh token, só UMA recebe `consumido=true`; as demais perdem a corrida
+	// e são recusadas (o equivalente a um reuso dentro da janela de tolerância:
+	// o vencedor acabou de revogar o token). Isso impede que a cadeia bifurque
+	// em dois filhos válidos — o que esconderia o roubo da detecção de reuso.
+	//
+	// Trade-off: se a emissão do filho falhar depois deste ponto, o token já
+	// foi consumido e o usuário precisa entrar de novo. Falhar fechado é
+	// preferível a uma cadeia bifurcada.
+	consumido, err := uc.tokens.RevogarSeAtivo(ctx, registro.ID)
+	if err != nil {
+		return nil, fmt.Errorf("consumir refresh token: %w", err)
+	}
+	if !consumido {
+		return nil, shared.ErrCredenciaisInvalidas
+	}
 	novoRefresh, err := emitirEPersistirRefresh(ctx, uc.tokens, uc.jwtSecret, usuario, registro.FamiliaID, registro.ExpiraEm)
 	if err != nil {
 		return nil, err
-	}
-	if err := uc.tokens.Revogar(ctx, registro.ID); err != nil {
-		return nil, fmt.Errorf("revogar refresh token anterior: %w", err)
 	}
 
 	return &RefreshTokenOutput{
@@ -334,4 +353,24 @@ func emitirToken(secret []byte, u *identidade.Usuario, typ string, expiresAt tim
 		return "", fmt.Errorf("assinar token: %w", err)
 	}
 	return signed, nil
+}
+
+var (
+	hashFicticioOnce  sync.Once
+	hashFicticioValor string
+)
+
+// hashFicticio é um hash bcrypt (no custo vigente) de uma senha que ninguém
+// conhece, usado para igualar o tempo de login quando o e-mail não existe.
+func hashFicticio() string {
+	hashFicticioOnce.Do(func() {
+		h, err := bcrypt.GenerateFromPassword([]byte(uuid.NewString()), bcryptCost)
+		if err != nil {
+			// Falha só se o custo for inválido; um hash inválido ainda gasta
+			// tempo de CompareHashAndPassword mínimo, mas não quebra o login.
+			h = []byte("$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi")
+		}
+		hashFicticioValor = string(h)
+	})
+	return hashFicticioValor
 }

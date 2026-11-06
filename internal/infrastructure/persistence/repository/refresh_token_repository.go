@@ -86,3 +86,11 @@ func (r *PgxRefreshTokenRepository) RevogarTodosDoUsuarioExceto(ctx context.Cont
 	}
 	return nil
 }
+
+func (r *PgxRefreshTokenRepository) RevogarSeAtivo(ctx context.Context, id uuid.UUID) (bool, error) {
+	n, err := r.queries.RevogarRefreshTokenSeAtivo(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("RevogarRefreshTokenSeAtivo: %w", err)
+	}
+	return n == 1, nil
+}

@@ -31,6 +31,14 @@ func HashRefreshToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// Todas as operações que ALTERAM uma conta existente passam por
+// ContaRepository.Modificar: uma transação com lock global de contas, linha
+// relida com FOR UPDATE e revogação de tokens no mesmo commit. Isso garante
+// que (a) a regra do "último ADMIN" não sofre TOCTOU entre duas operações
+// concorrentes, (b) um read-modify-write não desfaz a alteração de outra
+// operação (ex.: troca de senha reativando uma conta recém-desativada) e
+// (c) a mudança de estado e a revogação das sessões são atômicas.
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAR USUÁRIO
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,52 +115,44 @@ type AtualizarUsuarioInput struct {
 
 type AtualizarUsuarioUseCase struct {
 	contas identidade.ContaRepository
-	tokens identidade.RefreshTokenRepository
 }
 
-func NewAtualizarUsuarioUseCase(contas identidade.ContaRepository, tokens identidade.RefreshTokenRepository) *AtualizarUsuarioUseCase {
-	return &AtualizarUsuarioUseCase{contas: contas, tokens: tokens}
+func NewAtualizarUsuarioUseCase(contas identidade.ContaRepository) *AtualizarUsuarioUseCase {
+	return &AtualizarUsuarioUseCase{contas: contas}
 }
 
 func (uc *AtualizarUsuarioUseCase) Execute(ctx context.Context, in AtualizarUsuarioInput) (*identidade.Usuario, error) {
-	u, err := carregarUsuario(ctx, uc.contas, in.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	perfilMudou := false
-	if in.Perfil != nil {
-		novo, err := identidade.ParsePerfil(*in.Perfil)
-		if err != nil {
-			return nil, err
-		}
-		if novo != u.Perfil {
-			if u.Perfil == identidade.PerfilAdmin {
-				if err := garantirRebaixamentoSeguro(ctx, uc.contas, u, in.AtorID); err != nil {
-					return nil, err
+	return uc.contas.Modificar(ctx, in.ID, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+		perfilMudou := false
+		if in.Perfil != nil {
+			novo, err := identidade.ParsePerfil(*in.Perfil)
+			if err != nil {
+				return err
+			}
+			if novo != u.Perfil {
+				if u.Perfil == identidade.PerfilAdmin {
+					if err := garantirRebaixamentoSeguro(ctx, tx, u, in.AtorID); err != nil {
+						return err
+					}
 				}
+				if err := u.AlterarPerfil(novo); err != nil {
+					return err
+				}
+				perfilMudou = true
 			}
-			if err := u.AlterarPerfil(novo); err != nil {
-				return nil, err
+		}
+		if in.Nome != nil {
+			u.AlterarNome(*in.Nome)
+		}
+		// O perfil vai dentro do JWT: derruba as sessões para que o novo perfil
+		// valha no próximo login em vez de depender de tokens emitidos antes.
+		if perfilMudou {
+			if err := tx.RevogarTokensDoUsuario(ctx, u.ID); err != nil {
+				return fmt.Errorf("revogar tokens: %w", err)
 			}
-			perfilMudou = true
 		}
-	}
-	if in.Nome != nil {
-		u.AlterarNome(*in.Nome)
-	}
-
-	if err := uc.contas.Save(ctx, u); err != nil {
-		return nil, fmt.Errorf("salvar usuário: %w", err)
-	}
-	// O perfil vai dentro do JWT: derruba as sessões para que o novo perfil
-	// valha no próximo login em vez de depender de tokens emitidos antes.
-	if perfilMudou {
-		if err := uc.tokens.RevogarTodosDoUsuario(ctx, u.ID); err != nil {
-			return nil, fmt.Errorf("revogar tokens: %w", err)
-		}
-	}
-	return u, nil
+		return nil
+	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,41 +161,31 @@ func (uc *AtualizarUsuarioUseCase) Execute(ctx context.Context, in AtualizarUsua
 
 type AlterarStatusUsuarioUseCase struct {
 	contas identidade.ContaRepository
-	tokens identidade.RefreshTokenRepository
 }
 
-func NewAlterarStatusUsuarioUseCase(contas identidade.ContaRepository, tokens identidade.RefreshTokenRepository) *AlterarStatusUsuarioUseCase {
-	return &AlterarStatusUsuarioUseCase{contas: contas, tokens: tokens}
+func NewAlterarStatusUsuarioUseCase(contas identidade.ContaRepository) *AlterarStatusUsuarioUseCase {
+	return &AlterarStatusUsuarioUseCase{contas: contas}
 }
 
 func (uc *AlterarStatusUsuarioUseCase) Execute(ctx context.Context, id, atorID uuid.UUID, ativar bool) (*identidade.Usuario, error) {
-	u, err := carregarUsuario(ctx, uc.contas, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if ativar {
-		u.Ativar()
-	} else {
+	return uc.contas.Modificar(ctx, id, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+		if ativar {
+			u.Ativar()
+			return nil
+		}
 		if u.Ativo && u.Perfil == identidade.PerfilAdmin {
-			if err := garantirRebaixamentoSeguro(ctx, uc.contas, u, atorID); err != nil {
-				return nil, err
+			if err := garantirRebaixamentoSeguro(ctx, tx, u, atorID); err != nil {
+				return err
 			}
 		} else if u.ID == atorID {
-			return nil, shared.ErrAutoModificacao
+			return shared.ErrAutoModificacao
 		}
 		u.Desativar()
-	}
-
-	if err := uc.contas.Save(ctx, u); err != nil {
-		return nil, fmt.Errorf("salvar usuário: %w", err)
-	}
-	if !ativar {
-		if err := uc.tokens.RevogarTodosDoUsuario(ctx, u.ID); err != nil {
-			return nil, fmt.Errorf("revogar tokens: %w", err)
+		if err := tx.RevogarTokensDoUsuario(ctx, u.ID); err != nil {
+			return fmt.Errorf("revogar tokens: %w", err)
 		}
-	}
-	return u, nil
+		return nil
+	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,11 +199,10 @@ type RedefinirSenhaOutput struct {
 
 type RedefinirSenhaUseCase struct {
 	contas identidade.ContaRepository
-	tokens identidade.RefreshTokenRepository
 }
 
-func NewRedefinirSenhaUseCase(contas identidade.ContaRepository, tokens identidade.RefreshTokenRepository) *RedefinirSenhaUseCase {
-	return &RedefinirSenhaUseCase{contas: contas, tokens: tokens}
+func NewRedefinirSenhaUseCase(contas identidade.ContaRepository) *RedefinirSenhaUseCase {
+	return &RedefinirSenhaUseCase{contas: contas}
 }
 
 func (uc *RedefinirSenhaUseCase) Execute(ctx context.Context, id, atorID uuid.UUID) (*RedefinirSenhaOutput, error) {
@@ -222,11 +211,9 @@ func (uc *RedefinirSenhaUseCase) Execute(ctx context.Context, id, atorID uuid.UU
 	if id == atorID {
 		return nil, shared.Newf(shared.ErrAutoModificacao, "use a troca de senha da própria conta")
 	}
-	u, err := carregarUsuario(ctx, uc.contas, id)
-	if err != nil {
-		return nil, err
-	}
 
+	// O bcrypt (~250 ms) é calculado ANTES de abrir a transação para não
+	// segurar o lock global de contas durante o hash.
 	senha, err := identidade.GerarSenhaTemporaria()
 	if err != nil {
 		return nil, fmt.Errorf("gerar senha temporária: %w", err)
@@ -235,13 +222,16 @@ func (uc *RedefinirSenhaUseCase) Execute(ctx context.Context, id, atorID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	u.DefinirSenha(hash, true)
 
-	if err := uc.contas.Save(ctx, u); err != nil {
-		return nil, fmt.Errorf("salvar usuário: %w", err)
-	}
-	if err := uc.tokens.RevogarTodosDoUsuario(ctx, u.ID); err != nil {
-		return nil, fmt.Errorf("revogar tokens: %w", err)
+	u, err := uc.contas.Modificar(ctx, id, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+		u.DefinirSenha(hash, true)
+		if err := tx.RevogarTokensDoUsuario(ctx, u.ID); err != nil {
+			return fmt.Errorf("revogar tokens: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &RedefinirSenhaOutput{Usuario: u, SenhaTemporaria: senha}, nil
 }
@@ -270,76 +260,70 @@ func NewAlterarMinhaSenhaUseCase(contas identidade.ContaRepository, tokens ident
 }
 
 func (uc *AlterarMinhaSenhaUseCase) Execute(ctx context.Context, in AlterarMinhaSenhaInput) error {
-	u, err := carregarUsuario(ctx, uc.contas, in.UsuarioID)
-	if err != nil {
-		return err
-	}
-	if !u.Ativo {
-		return shared.ErrUsuarioInativo
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(u.SenhaHash), []byte(in.SenhaAtual)); err != nil {
-		return shared.ErrSenhaAtualIncorreta
-	}
-	if in.NovaSenha == in.SenhaAtual {
-		return shared.ErrSenhaIgualAnterior
-	}
-	if err := identidade.ValidarSenha(in.NovaSenha); err != nil {
-		return err
-	}
-	hash, err := hashSenha(in.NovaSenha)
-	if err != nil {
-		return err
-	}
-	u.DefinirSenha(hash, false)
-	if err := uc.contas.Save(ctx, u); err != nil {
-		return fmt.Errorf("salvar usuário: %w", err)
-	}
-
+	// Descobre (fora da transação, é só leitura) qual família de refresh
+	// poupar. Um token que não é do usuário nunca define a sessão poupada.
+	var poupar *identidade.RefreshToken
 	if in.RefreshToken != "" {
 		atual, err := uc.tokens.GetByHash(ctx, HashRefreshToken(in.RefreshToken))
 		if err != nil {
 			return fmt.Errorf("buscar refresh token: %w", err)
 		}
-		if atual != nil && atual.UsuarioID == u.ID && atual.RevogadoEm == nil {
-			if err := uc.tokens.RevogarTodosDoUsuarioExceto(ctx, u.ID, atual.FamiliaID); err != nil {
-				return fmt.Errorf("revogar tokens: %w", err)
-			}
-			return nil
+		if atual != nil && atual.UsuarioID == in.UsuarioID && atual.RevogadoEm == nil {
+			poupar = atual
 		}
 	}
-	if err := uc.tokens.RevogarTodosDoUsuario(ctx, u.ID); err != nil {
-		return fmt.Errorf("revogar tokens: %w", err)
-	}
-	return nil
+
+	_, err := uc.contas.Modificar(ctx, in.UsuarioID, func(ctx context.Context, u *identidade.Usuario, tx identidade.ContaTx) error {
+		// Estado relido sob lock: se um ADMIN desativou a conta no meio do
+		// caminho, a troca é recusada em vez de reativá-la.
+		if !u.Ativo {
+			return shared.ErrUsuarioInativo
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(u.SenhaHash), []byte(in.SenhaAtual)); err != nil {
+			return shared.ErrSenhaAtualIncorreta
+		}
+		if in.NovaSenha == in.SenhaAtual {
+			return shared.ErrSenhaIgualAnterior
+		}
+		if err := identidade.ValidarSenha(in.NovaSenha); err != nil {
+			return err
+		}
+		hash, err := hashSenha(in.NovaSenha)
+		if err != nil {
+			return err
+		}
+		u.DefinirSenha(hash, false)
+
+		if poupar != nil {
+			err = tx.RevogarTokensDoUsuarioExceto(ctx, u.ID, poupar.FamiliaID)
+		} else {
+			err = tx.RevogarTokensDoUsuario(ctx, u.ID)
+		}
+		if err != nil {
+			return fmt.Errorf("revogar tokens: %w", err)
+		}
+		return nil
+	})
+	return err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-func carregarUsuario(ctx context.Context, repo identidade.Repository, id uuid.UUID) (*identidade.Usuario, error) {
-	u, err := repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("buscar usuário: %w", err)
-	}
-	if u == nil {
-		return nil, shared.ErrNotFound
-	}
-	return u, nil
-}
-
 // garantirRebaixamentoSeguro valida as duas regras que protegem o acesso
 // administrativo ao tirar o papel de ADMIN ativo de `alvo` (desativando-o ou
 // mudando seu perfil): o ator não pode fazê-lo a si mesmo, e o sistema não
-// pode ficar sem nenhum ADMIN ativo.
-func garantirRebaixamentoSeguro(ctx context.Context, contas identidade.ContaRepository, alvo *identidade.Usuario, atorID uuid.UUID) error {
+// pode ficar sem nenhum ADMIN ativo. Deve rodar DENTRO de Modificar — o lock
+// global é o que impede que duas chamadas concorrentes passem juntas.
+func garantirRebaixamentoSeguro(ctx context.Context, tx identidade.ContaTx, alvo *identidade.Usuario, atorID uuid.UUID) error {
 	if alvo.ID == atorID {
 		return shared.ErrAutoModificacao
 	}
 	if !alvo.Ativo {
 		return nil // admin já inativo: não conta no total de ativos
 	}
-	n, err := contas.ContarAdminsAtivos(ctx)
+	n, err := tx.ContarAdminsAtivos(ctx)
 	if err != nil {
 		return fmt.Errorf("contar administradores: %w", err)
 	}

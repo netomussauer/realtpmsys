@@ -35,7 +35,7 @@ func tokenParaTeste(t *testing.T, perfil string) string {
 // negados (RequirePerfil responde antes), então use cases nil bastam aqui.
 func TestRotasUsuarios_SoAdmin(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(testJWTSecret, logger, Handlers{Usuario: handler.NewUsuarioHandler(nil, nil, nil, nil, nil, nil)})
+	router := NewRouter(testJWTSecret, logger, Handlers{Usuario: handler.NewUsuarioHandler(nil, nil, nil, nil, nil, nil, nil)})
 
 	id := uuid.NewString()
 	rotas := []struct{ method, path string }{
@@ -68,7 +68,7 @@ func TestRotasUsuarios_SoAdmin(t *testing.T) {
 
 func TestRotaMeSenha_ExigeAutenticacao(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(testJWTSecret, logger, Handlers{Usuario: handler.NewUsuarioHandler(nil, nil, nil, nil, nil, nil)})
+	router := NewRouter(testJWTSecret, logger, Handlers{Usuario: handler.NewUsuarioHandler(nil, nil, nil, nil, nil, nil, nil)})
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodPatch, "/api/v1/me/senha", nil))
