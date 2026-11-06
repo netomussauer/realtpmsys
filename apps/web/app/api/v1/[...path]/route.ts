@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { BackendError } from "@/shared/lib/backend";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
+import { isSafePathSegments } from "@/shared/lib/proxy-path";
 import { refreshSession } from "@/shared/lib/refresh";
 import {
   getAccessToken,
@@ -93,7 +95,19 @@ async function trySilentRefresh(): Promise<string | null> {
 }
 
 async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
+  // CSRF: métodos que mudam estado só valem se vierem da própria origem
+  // (sameSite=lax ignora a porta; ver shared/lib/csrf.ts).
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
   const { path: pathSegments } = await ctx.params;
+
+  // O proxy só fala com /api/v1/*: segmentos como `..` ou com `/` poderiam,
+  // após a normalização da URL, alcançar outras rotas do backend (ex.: /metrics).
+  if (!isSafePathSegments(pathSegments)) {
+    return NextResponse.json({ error: "Caminho inválido" }, { status: 400 });
+  }
 
   const accessToken = await getAccessToken();
   if (!accessToken) {

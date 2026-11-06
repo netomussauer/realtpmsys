@@ -199,7 +199,7 @@ curl -X POST http://api.realtpmsys.local:8000/auth/login \
 | `APP_PORT` | literal | `8000` |
 | `APP_RUN_MIGRATIONS` | literal | `true` — aplica migrations no startup |
 | `APP_MIGRATIONS_PATH` | literal | `/app/migrations` |
-| `JWT_ACCESS_EXPIRES_MINUTES` | literal | `60` |
+| `JWT_ACCESS_EXPIRES_MINUTES` | literal | `15` — curto de propósito: o access token é stateless e vale até expirar mesmo após desativar a conta (ADR-013); o refresh rotativo renova sem o usuário perceber |
 | `DB_MAX_CONNS` / `DB_MIN_CONNS` | literal | `10` / `2` |
 
 ## Troubleshooting

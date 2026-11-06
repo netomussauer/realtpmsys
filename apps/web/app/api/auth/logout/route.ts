@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
 import { backendFetch } from "@/shared/lib/backend";
 import { clearSessionCookies, getRefreshToken } from "@/shared/lib/session";
 
@@ -14,7 +15,11 @@ import { clearSessionCookies, getRefreshToken } from "@/shared/lib/session";
  * O access token continua válido até expirar (JWT stateless; TTL curto), mas
  * sem o cookie o navegador nunca mais o envia.
  */
-export async function POST() {
+export async function POST(req: Request) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
   const refreshToken = await getRefreshToken();
   if (refreshToken) {
     try {

@@ -26,6 +26,18 @@ const nextConfig = {
 
   // Em produção, escondemos o header `X-Powered-By: Next.js`.
   poweredByHeader: false,
+
+  // Respostas da API do BFF (sessão, proxy do backend, senha temporária) nunca
+  // devem ser guardadas por navegador ou proxy intermediário. O proxy recria
+  // as respostas do backend e perderia o `Cache-Control: no-store` dele.
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

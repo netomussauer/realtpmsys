@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, LogIn } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { safeNextPath } from "@/shared/lib/safe-redirect";
 import { authService, type LoginResult } from "@/features/auth/services/auth.service";
 import {
   loginSchema,
@@ -30,7 +31,8 @@ export function LoginForm() {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const nextUrl = searchParams.get("next") ?? "/dashboard";
+  // Open redirect: só caminhos internos (ver shared/lib/safe-redirect.ts).
+  const nextUrl = safeNextPath(searchParams.get("next"));
 
   const {
     register,

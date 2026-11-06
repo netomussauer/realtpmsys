@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
 import { z } from "zod";
 import { backendFetch, type BackendError } from "@/shared/lib/backend";
 import { setSessionCookies } from "@/shared/lib/session";
@@ -23,6 +24,10 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
   let parsed;
   try {
     parsed = bodySchema.parse(await req.json());

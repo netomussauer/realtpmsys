@@ -295,14 +295,16 @@ flowchart LR
 
 **Trade-off / limites conhecidos:**
 
-- O **access token continua stateless**: uma conta desativada pode usá-lo até expirar (`JWT_ACCESS_EXPIRES_MINUTES`, default 60). A revogação derruba o refresh imediatamente, não o access já emitido. Reduzir o TTL (ex.: 15 min) estreita a janela; checar `ativo` por request no middleware a eliminaria ao custo de uma consulta por chamada.
+- O **access token continua stateless**: uma conta desativada pode usá-lo até expirar. Por isso o manifesto fixa `JWT_ACCESS_EXPIRES_MINUTES=15` (era 60): a revogação derruba o refresh na hora e o access residual dura no máximo 15 min. Checar `ativo` por request no middleware eliminaria a janela ao custo de uma consulta por chamada.
 - **Quebra de compatibilidade no deploy:** refresh tokens emitidos antes da migration `000004` não existem no banco e passam a ser recusados — cada usuário precisa fazer login de novo uma vez.
 - O single-flight do BFF vale por processo Node (o Deployment web roda com 1 réplica). Com mais réplicas, a janela de 10 s do backend cobre a corrida residual.
 - `refresh_tokens` cresce sem limpeza automática: tokens expirados/revogados ficam na tabela (índice por `expira_em` já criado para um futuro job de purga).
 - As contas semeadas por `000002`/`000003` continuam existindo com senha conhecida até alguém trocá-la/desativá-la pela nova tela — **ação operacional pendente após o deploy**.
-- Sem rate limiting em `/auth/login` (fora do escopo desta entrega).
+- **Rate limiting parcial:** `/auth/login` bloqueia o e-mail após 10 falhas em 15 min e `/me/senha` bloqueia o usuário após 5 (429 + `Retry-After`; em memória, 1 réplica). A chave é o e-mail, não o IP — o backend só enxerga o IP do BFF —, o que permite a um atacante bloquear temporariamente a conta de uma vítima (DoS de conta que se desfaz em 15 min). Não há limite por IP real do cliente.
+- **Concorrência:** toda alteração de conta roda em `ContaRepository.Modificar` (transação + `pg_advisory_xact_lock` global + `FOR UPDATE`), o que serializa as operações de conta e fecha o TOCTOU do "último ADMIN" e o lost update. A rotação do refresh consome o token com `UPDATE ... WHERE revogado_em IS NULL`, então só uma de N requisições concorrentes vence. Se a emissão do filho falhar depois de consumir o pai, o usuário precisa entrar de novo (falha fechada).
+- **BFF (CSRF):** as rotas que mudam estado exigem `Sec-Fetch-Site: same-origin|none` ou `Origin` do próprio host, porque `sameSite=lax` ignora a porta e outros serviços do mesmo host do lab seriam "same-site". O proxy `/api/v1/*` recusa segmentos de caminho com `..`, barras, `?`, hash ou `%`. O `?next=` do login só aceita caminhos internos. Respostas de `/api/*` saem com `Cache-Control: no-store`.
 
-**Quando revisitar:** TTL do access token / checagem de `ativo` por request; job de purga de `refresh_tokens`; auditoria de eventos de conta (quem criou/desativou quem); rate limiting de login.
+**Quando revisitar:** checagem de `ativo` por request; job de purga de `refresh_tokens` (`DELETE ... WHERE expira_em < now() - interval '7 days'`, há índice em `expira_em`); auditoria de eventos de conta (quem criou/desativou/promoveu quem — hoje só o log HTTP com `user_id` e path); limite por IP real do cliente; exigir `JWT_SECRET` com 32+ bytes.
 
 #### ADR-012 — Frontend Next.js no mesmo repo + BFF + cookies httpOnly *(adicionado em 2026-05-26)*
 

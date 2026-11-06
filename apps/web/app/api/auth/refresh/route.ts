@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSameOriginRequest } from "@/shared/lib/csrf";
 import type { BackendError } from "@/shared/lib/backend";
 import { refreshSession } from "@/shared/lib/refresh";
 import {
@@ -22,7 +23,11 @@ import {
  * Se o backend rejeitar (refresh expirado/revogado/reusado), limpa todos os
  * cookies — força o usuário a relogar. Não tenta recuperar.
  */
-export async function POST() {
+export async function POST(req: Request) {
+  if (!isSameOriginRequest(req)) {
+    return NextResponse.json({ error: "Origem não permitida" }, { status: 403 });
+  }
+
   const refreshToken = await getRefreshToken();
   if (!refreshToken) {
     return NextResponse.json({ error: "Sem refresh token" }, { status: 401 });

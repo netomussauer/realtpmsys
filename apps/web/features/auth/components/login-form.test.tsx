@@ -131,6 +131,24 @@ describe("LoginForm", () => {
     await vi.waitFor(() => expect(mockedPush).toHaveBeenCalledWith("/turmas"));
   });
 
+  it.each([
+    ["URL absoluta", "https://evil.example/phish"],
+    ["protocolo-relativa", "//evil.example"],
+    ["barra invertida", "/\\evil.example"],
+    ["esquema javascript", "javascript:alert(1)"],
+  ])("open redirect: ?next com %s é ignorado e vai para /dashboard", async (_nome, malicioso) => {
+    mockedUseSearchParams.mockReturnValue(new URLSearchParams({ next: malicioso }));
+    const user = userEvent.setup();
+    mockedLogin.mockResolvedValue({ userId: "u1", perfil: "ADMIN" });
+    renderForm();
+
+    await preencherFormulario(user, "joao@realtpm.app", "senha123");
+    await user.click(screen.getByRole("button", { name: /entrar/i }));
+
+    await vi.waitFor(() => expect(mockedPush).toHaveBeenCalledWith("/dashboard"));
+    expect(mockedPush).not.toHaveBeenCalledWith(malicioso);
+  });
+
   it("exibe a mensagem de erro do servidor quando o login falha", async () => {
     const user = userEvent.setup();
     mockedLogin.mockRejectedValue(new Error("credenciais inválidas"));
