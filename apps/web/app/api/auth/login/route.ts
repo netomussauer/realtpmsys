@@ -55,5 +55,7 @@ export async function POST(req: Request) {
   return NextResponse.json({
     userId: tokens.user_id,
     perfil: tokens.perfil,
+    // Senha temporária: o client leva o usuário direto à troca de senha.
+    deveTrocarSenha: tokens.deve_trocar_senha === true,
   });
 }

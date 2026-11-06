@@ -29,7 +29,7 @@ describe("authService.login", () => {
         body: JSON.stringify({ email: "joao@realtpm.app", senha: "senha123" }),
       }),
     );
-    expect(result).toEqual({ userId: "u1", perfil: "ADMIN" });
+    expect(result).toEqual({ userId: "u1", perfil: "ADMIN", deveTrocarSenha: false });
   });
 
   it("lança o erro retornado pelo BFF quando a resposta não é ok", async () => {
@@ -118,5 +118,38 @@ describe("authService.refresh", () => {
     const result = await authService.refresh();
 
     expect(result).toBe(false);
+  });
+});
+
+describe("authService.trocarSenha", () => {
+  it("faz POST em /api/auth/senha com a senha atual e a nova", async () => {
+    const fetchMock = mockFetchOnce(200, { ok: true });
+
+    await authService.trocarSenha({ senhaAtual: "antiga123456", novaSenha: "nova1234567" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/senha",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+        body: JSON.stringify({ senhaAtual: "antiga123456", novaSenha: "nova1234567" }),
+      }),
+    );
+  });
+
+  it("lança a mensagem do BFF/backend quando a troca é recusada", async () => {
+    mockFetchOnce(422, { error: "senha atual incorreta" });
+
+    await expect(
+      authService.trocarSenha({ senhaAtual: "errada", novaSenha: "nova1234567" }),
+    ).rejects.toThrow("senha atual incorreta");
+  });
+
+  it("usa mensagem genérica com o status quando o corpo não tem `error`", async () => {
+    mockFetchOnce(502, {});
+
+    await expect(
+      authService.trocarSenha({ senhaAtual: "x", novaSenha: "nova1234567" }),
+    ).rejects.toThrow("Falha ao trocar a senha (HTTP 502)");
   });
 });

@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { backendFetch, type BackendError } from "@/shared/lib/backend";
+import type { BackendError } from "@/shared/lib/backend";
+import { refreshSession } from "@/shared/lib/refresh";
 import {
   getAccessToken,
   getRefreshToken,
-  updateAccessCookie,
+  updateSessionFromRefresh,
   clearSessionCookies,
 } from "@/shared/lib/session";
 
@@ -18,19 +19,16 @@ import {
  *
  * Refresh silencioso:
  *   1. Request → backend retorna 401
- *   2. Proxy chama /auth/refresh internamente com rtpm_refresh
- *   3. Se sucesso: atualiza rtpm_access cookie e re-tenta a request original
+ *   2. Proxy chama /auth/refresh internamente com rtpm_refresh (rotativo:
+ *      renovações concorrentes são unificadas em uma só chamada)
+ *   3. Se sucesso: regrava os cookies (access + refresh novo + session) e
+ *      re-tenta a request original
  *   4. Se refresh falhou: limpa cookies e devolve 401 ao cliente (force
  *      relogin)
  *
  * Trade-off: GET com cache=no-store sempre — dados de gestão são
  * sensíveis a stale state. ISR ou cache de pages aqui é desligado.
  */
-
-interface RefreshResponse {
-  access_token: string;
-  expires_at: string;
-}
 
 async function forwardToBackend(
   req: NextRequest,
@@ -79,11 +77,9 @@ async function trySilentRefresh(): Promise<string | null> {
   const refresh = await getRefreshToken();
   if (!refresh) return null;
   try {
-    const r = await backendFetch<RefreshResponse>("/auth/refresh", {
-      method: "POST",
-      body: { refresh_token: refresh },
-    });
-    await updateAccessCookie(r.access_token, r.expires_at);
+    // Single-flight + refresh rotativo: o novo refresh token também é gravado.
+    const r = await refreshSession(refresh);
+    await updateSessionFromRefresh(r);
     return r.access_token;
   } catch (err) {
     // Refresh falhou (expirado/invalidado pelo backend) → cliente precisa

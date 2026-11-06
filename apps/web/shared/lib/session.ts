@@ -16,6 +16,7 @@ import { jwtVerify } from "jose";
 import type {
   AccessTokenClaims,
   BackendLoginResponse,
+  BackendRefreshResponse,
   Session,
 } from "@/features/auth/types/auth.types";
 
@@ -122,37 +123,47 @@ export async function setSessionCookies(
     email: extras.email,
     perfil: resp.perfil,
     accessExpiresAt: resp.expires_at,
+    deveTrocarSenha: resp.deve_trocar_senha === true,
   };
   store.set(SESSION_COOKIE, JSON.stringify(session), baseCookieOptions({ maxAgeSeconds: refreshTtl }));
 }
 
 /**
- * Atualiza apenas o access_token (chamado após refresh bem-sucedido).
- * Mantém refresh + session intactos.
+ * Regrava a sessão após um refresh bem-sucedido.
+ *
+ * O refresh token é ROTATIVO: o backend consome o apresentado e devolve um
+ * novo. Se o cookie não for regravado aqui, a próxima renovação reapresenta
+ * um token já consumido — o backend trata isso como roubo e derruba a
+ * sessão inteira. Por isso os três cookies (access, refresh, session) são
+ * atualizados juntos. O e-mail do session cookie é preservado (o backend
+ * não o devolve).
  */
-export async function updateAccessCookie(newAccessToken: string, expiresAt: string): Promise<void> {
+export async function updateSessionFromRefresh(resp: BackendRefreshResponse): Promise<void> {
   const store = await cookies();
-  const ttl = Math.max(
-    60,
-    Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
-  );
-  store.set(ACCESS_COOKIE, newAccessToken, baseCookieOptions({ maxAgeSeconds: ttl }));
+  const now = Date.now();
+  const accessTtl = Math.max(60, Math.floor((new Date(resp.expires_at).getTime() - now) / 1000));
+  const refreshTtl = Math.max(60, Math.floor((new Date(resp.refresh_expires_at).getTime() - now) / 1000));
 
-  // Atualiza accessExpiresAt no session cookie (sem perder email).
-  const sessionRaw = store.get(SESSION_COOKIE)?.value;
-  if (sessionRaw) {
+  store.set(ACCESS_COOKIE, resp.access_token, baseCookieOptions({ maxAgeSeconds: accessTtl }));
+  store.set(REFRESH_COOKIE, resp.refresh_token, baseCookieOptions({ maxAgeSeconds: refreshTtl }));
+
+  let email = "";
+  const raw = store.get(SESSION_COOKIE)?.value;
+  if (raw) {
     try {
-      const parsed = JSON.parse(sessionRaw) as Session;
-      parsed.accessExpiresAt = expiresAt;
-      store.set(
-        SESSION_COOKIE,
-        JSON.stringify(parsed),
-        baseCookieOptions({ maxAgeSeconds: ttl * 2 }),
-      );
+      email = (JSON.parse(raw) as Session).email ?? "";
     } catch {
-      // Cookie corrompido — deixa o usuário relogar.
+      // Cookie corrompido — segue sem e-mail; a UI só deixa de exibi-lo.
     }
   }
+  const session: Session = {
+    userId: resp.user_id,
+    email,
+    perfil: resp.perfil,
+    accessExpiresAt: resp.expires_at,
+    deveTrocarSenha: resp.deve_trocar_senha === true,
+  };
+  store.set(SESSION_COOKIE, JSON.stringify(session), baseCookieOptions({ maxAgeSeconds: refreshTtl }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

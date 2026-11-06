@@ -106,6 +106,19 @@ describe("LoginForm", () => {
     expect(mockedInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["auth", "session"] });
   });
 
+  it("senha temporária: vai direto para /minha-conta, ignorando ?next", async () => {
+    mockedUseSearchParams.mockReturnValue(new URLSearchParams("next=/turmas"));
+    const user = userEvent.setup();
+    mockedLogin.mockResolvedValue({ userId: "u1", perfil: "ADMIN", deveTrocarSenha: true });
+    renderForm();
+
+    await preencherFormulario(user, "joao@realtpm.app", "senhaTemp123");
+    await user.click(screen.getByRole("button", { name: /entrar/i }));
+
+    await vi.waitFor(() => expect(mockedPush).toHaveBeenCalledWith("/minha-conta"));
+    expect(mockedPush).not.toHaveBeenCalledWith("/turmas");
+  });
+
   it("redireciona para a URL de ?next quando presente", async () => {
     mockedUseSearchParams.mockReturnValue(new URLSearchParams("next=/turmas"));
     const user = userEvent.setup();

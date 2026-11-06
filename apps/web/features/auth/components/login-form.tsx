@@ -42,11 +42,12 @@ export function LoginForm() {
 
   const mutation = useMutation<LoginResult, Error, LoginFormData>({
     mutationFn: (data) => authService.login(data),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setServerError(null);
       // Próxima leitura do useSession() pega valor fresh do BFF.
       await queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
-      router.push(nextUrl);
+      // Senha temporária: a troca vem antes de qualquer outra tela.
+      router.push(result.deveTrocarSenha ? "/minha-conta" : nextUrl);
       router.refresh();
     },
     onError: (err) => {
