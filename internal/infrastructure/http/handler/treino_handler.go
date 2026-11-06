@@ -13,9 +13,9 @@ import (
 )
 
 type TreinoHandler struct {
-	criar          *appfreq.CriarTreinoUseCase
-	lancar         *appfreq.LancarFrequenciaUseCase
-	treinoRepo     domfreq.TreinoRepository
+	criar        *appfreq.CriarTreinoUseCase
+	lancar       *appfreq.LancarFrequenciaUseCase
+	treinoRepo   domfreq.TreinoRepository
 	frequenciaRepo domfreq.FrequenciaRepository
 }
 

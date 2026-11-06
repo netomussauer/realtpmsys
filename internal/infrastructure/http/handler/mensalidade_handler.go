@@ -16,10 +16,10 @@ import (
 
 // MensalidadeHandler agrupa os handlers do contexto Financeiro.
 type MensalidadeHandler struct {
-	registrarPagamento *appfinanceiro.RegistrarPagamentoUseCase
-	cancelar           *appfinanceiro.CancelarMensalidadeUseCase
-	gerarMensalidades  *appfinanceiro.GerarMensalidadesUseCase
-	mensalidadeRepo    financeiro.MensalidadeRepository
+	registrarPagamento  *appfinanceiro.RegistrarPagamentoUseCase
+	cancelar            *appfinanceiro.CancelarMensalidadeUseCase
+	gerarMensalidades   *appfinanceiro.GerarMensalidadesUseCase
+	mensalidadeRepo     financeiro.MensalidadeRepository
 }
 
 func NewMensalidadeHandler(
@@ -220,16 +220,16 @@ func parseUUID(r *http.Request, param string) (uuid.UUID, error) {
 }
 
 type mensalidadeResponse struct {
-	ID             uuid.UUID `json:"id"`
-	AtletaID       uuid.UUID `json:"atleta_id"`
-	CompetenciaAno int       `json:"competencia_ano"`
-	CompetenciaMes int       `json:"competencia_mes"`
-	DataVencimento string    `json:"data_vencimento"`
-	Valor          string    `json:"valor"`
-	ValorPago      *string   `json:"valor_pago,omitempty"`
-	Status         string    `json:"status"`
-	DataPagamento  *string   `json:"data_pagamento,omitempty"`
-	FormaPagamento *string   `json:"forma_pagamento,omitempty"`
+	ID             uuid.UUID  `json:"id"`
+	AtletaID       uuid.UUID  `json:"atleta_id"`
+	CompetenciaAno int        `json:"competencia_ano"`
+	CompetenciaMes int        `json:"competencia_mes"`
+	DataVencimento string     `json:"data_vencimento"`
+	Valor          string     `json:"valor"`
+	ValorPago      *string    `json:"valor_pago,omitempty"`
+	Status         string     `json:"status"`
+	DataPagamento  *string    `json:"data_pagamento,omitempty"`
+	FormaPagamento *string    `json:"forma_pagamento,omitempty"`
 }
 
 func toMensalidadeResponse(m *financeiro.Mensalidade) mensalidadeResponse {

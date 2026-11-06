@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	domfreq "github.com/realtpmsys/realtpmsys/internal/domain/frequencia"
 	"github.com/google/uuid"
 	"github.com/realtpmsys/realtpmsys/internal/domain/financeiro"
-	domfreq "github.com/realtpmsys/realtpmsys/internal/domain/frequencia"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

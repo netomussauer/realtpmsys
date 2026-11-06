@@ -39,12 +39,12 @@ type fakeRepo struct {
 	frequenciaTurmaResp  RelatorioFrequenciaTurma
 	inadimplenciaResp    RelatorioInadimplencia
 
-	gotAtletaID uuid.UUID
-	gotTurmaID  uuid.UUID
-	gotInicio   time.Time
-	gotFim      time.Time
-	gotAno      *int
-	gotMes      *int
+	gotAtletaID  uuid.UUID
+	gotTurmaID   uuid.UUID
+	gotInicio    time.Time
+	gotFim       time.Time
+	gotAno       *int
+	gotMes       *int
 
 	errFreqAtleta error
 	errFreqTurma  error

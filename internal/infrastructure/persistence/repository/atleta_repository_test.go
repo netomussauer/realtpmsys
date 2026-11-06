@@ -203,10 +203,10 @@ func TestAtletaRepository_IsAtletaDoResponsavel(t *testing.T) {
 	require.NoError(t, repo.Save(ctx, atletaAlheio))
 
 	cases := []struct {
-		name   string
-		atID   uuid.UUID
-		respID uuid.UUID
-		want   bool
+		name    string
+		atID    uuid.UUID
+		respID  uuid.UUID
+		want    bool
 	}{
 		{"é do responsável", atletaDoResp.ID, respUserID, true},
 		{"não é do responsável", atletaAlheio.ID, respUserID, false},

@@ -254,8 +254,8 @@ func toMensalidadeEntity(row sqlcgen.Mensalidade) *financeiro.Mensalidade {
 		DataPagamento:  row.DataPagamento,
 		FormaPagamento: row.FormaPagamento,
 		Observacao:     row.Observacao,
-		CriadoEm:       row.CriadoEm,
-		AtualizadoEm:   row.AtualizadoEm,
+		CriadoEm:      row.CriadoEm,
+		AtualizadoEm:  row.AtualizadoEm,
 	}
 }
 

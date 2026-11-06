@@ -45,8 +45,8 @@ func novaMensalidade(atletaID, contratoID uuid.UUID, ano, mes int, valor int64) 
 		DataVencimento: time.Date(ano, time.Month(mes), 10, 0, 0, 0, 0, time.UTC),
 		Valor:          decimal.NewFromInt(valor),
 		Status:         financeiro.MensalidadePendente,
-		CriadoEm:       time.Now().UTC(),
-		AtualizadoEm:   time.Now().UTC(),
+		CriadoEm:      time.Now().UTC(),
+		AtualizadoEm:  time.Now().UTC(),
 	}
 }
 

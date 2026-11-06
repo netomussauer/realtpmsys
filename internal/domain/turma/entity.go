@@ -126,9 +126,9 @@ func (t *Turma) AceitaIdade(idade int) bool {
 type StatusMatricula string
 
 const (
-	MatriculaAtiva       StatusMatricula = "ATIVA"
-	MatriculaCancelada   StatusMatricula = "CANCELADA"
-	MatriculaTransferida StatusMatricula = "TRANSFERIDA"
+	MatriculaAtiva        StatusMatricula = "ATIVA"
+	MatriculaCancelada    StatusMatricula = "CANCELADA"
+	MatriculaTransferida  StatusMatricula = "TRANSFERIDA"
 )
 
 // Matricula vincula um atleta a uma turma em um período.

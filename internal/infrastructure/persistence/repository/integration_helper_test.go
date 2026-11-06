@@ -141,3 +141,4 @@ func migrationsDir() string {
 	// ../../../../migrations
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "migrations")
 }
+

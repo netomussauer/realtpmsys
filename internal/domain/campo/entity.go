@@ -9,11 +9,11 @@ import (
 // Campo é um local físico onde turmas treinam.
 // Sem histórico/soft delete — usar `Ativo = false` para desativar.
 type Campo struct {
-	ID            uuid.UUID
-	Nome          string
-	Endereco      *string
-	CapacidadeMax *int
-	Ativo         bool
+	ID             uuid.UUID
+	Nome           string
+	Endereco       *string
+	CapacidadeMax  *int
+	Ativo          bool
 }
 
 // New cria um Campo validado.

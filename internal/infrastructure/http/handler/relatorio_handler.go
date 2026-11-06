@@ -48,17 +48,17 @@ func (h *RelatorioHandler) Inadimplencia(w http.ResponseWriter, r *http.Request)
 	itens := make([]map[string]any, len(rel.Itens))
 	for i, it := range rel.Itens {
 		itens[i] = map[string]any{
-			"mensalidade_id":  it.MensalidadeID,
-			"atleta_id":       it.AtletaID,
-			"atleta_nome":     it.AtletaNome,
-			"atleta_telefone": it.AtletaTelefone,
-			"atleta_email":    it.AtletaEmail,
-			"competencia_ano": it.CompetenciaAno,
-			"competencia_mes": it.CompetenciaMes,
-			"data_vencimento": it.DataVencimento.Format("2006-01-02"),
-			"valor":           it.Valor.String(),
-			"status":          it.Status,
-			"dias_em_atraso":  it.DiasEmAtraso,
+			"mensalidade_id":   it.MensalidadeID,
+			"atleta_id":        it.AtletaID,
+			"atleta_nome":      it.AtletaNome,
+			"atleta_telefone":  it.AtletaTelefone,
+			"atleta_email":     it.AtletaEmail,
+			"competencia_ano":  it.CompetenciaAno,
+			"competencia_mes":  it.CompetenciaMes,
+			"data_vencimento":  it.DataVencimento.Format("2006-01-02"),
+			"valor":            it.Valor.String(),
+			"status":           it.Status,
+			"dias_em_atraso":   it.DiasEmAtraso,
 		}
 	}
 	response.WriteJSON(w, http.StatusOK, map[string]any{
@@ -90,14 +90,14 @@ func (h *RelatorioHandler) FrequenciaAtleta(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	response.WriteJSON(w, http.StatusOK, map[string]any{
-		"atleta_id":        atletaID,
-		"data_inicio":      di.Format("2006-01-02"),
-		"data_fim":         df.Format("2006-01-02"),
-		"presentes":        freq.Presentes,
-		"ausentes":         freq.Ausentes,
-		"justificados":     freq.Justificados,
-		"total":            freq.Total,
-		"taxa_presenca_pc": freq.TaxaPresencaPC,
+		"atleta_id":         atletaID,
+		"data_inicio":       di.Format("2006-01-02"),
+		"data_fim":          df.Format("2006-01-02"),
+		"presentes":         freq.Presentes,
+		"ausentes":          freq.Ausentes,
+		"justificados":      freq.Justificados,
+		"total":             freq.Total,
+		"taxa_presenca_pc":  freq.TaxaPresencaPC,
 	})
 }
 

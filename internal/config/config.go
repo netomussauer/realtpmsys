@@ -9,9 +9,9 @@ import (
 
 // Config centraliza todas as configurações da aplicação.
 type Config struct {
-	DB         DBConfig
-	JWT        JWTConfig
-	Server     ServerConfig
+	DB        DBConfig
+	JWT       JWTConfig
+	Server    ServerConfig
 	Migrations MigrationsConfig
 }
 
@@ -29,15 +29,15 @@ type MigrationsConfig struct {
 }
 
 type JWTConfig struct {
-	Secret              string
-	AccessExpireMinutes int
-	RefreshExpireDays   int
+	Secret                string
+	AccessExpireMinutes   int
+	RefreshExpireDays     int
 }
 
 type ServerConfig struct {
-	Port             string
-	ReadTimeoutSecs  int
-	WriteTimeoutSecs int
+	Port              string
+	ReadTimeoutSecs   int
+	WriteTimeoutSecs  int
 }
 
 // Load lê variáveis de ambiente e retorna Config validado.

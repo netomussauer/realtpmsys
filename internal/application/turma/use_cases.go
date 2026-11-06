@@ -189,9 +189,9 @@ type MatricularAtletaInput struct {
 }
 
 type MatricularAtletaUseCase struct {
-	turmas     domainturma.TurmaRepository
-	matriculas domainturma.MatriculaRepository
-	atletas    domainatleta.Repository
+	turmas      domainturma.TurmaRepository
+	matriculas  domainturma.MatriculaRepository
+	atletas     domainatleta.Repository
 }
 
 func NewMatricularAtletaUseCase(

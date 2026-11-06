@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	appfinanceiro "github.com/realtpmsys/realtpmsys/internal/application/financeiro"
 	"github.com/robfig/cron/v3"
+	appfinanceiro "github.com/realtpmsys/realtpmsys/internal/application/financeiro"
 )
 
 // MensalidadeJob encapsula os jobs do contexto Financeiro:

@@ -29,8 +29,8 @@ func (s *GeradorMensalidadeService) Gerar(
 		DataVencimento: dataVencimento,
 		Valor:          contrato.ValorContratado,
 		Status:         MensalidadePendente,
-		CriadoEm:       now,
-		AtualizadoEm:   now,
+		CriadoEm:      now,
+		AtualizadoEm:  now,
 	}
 }
 

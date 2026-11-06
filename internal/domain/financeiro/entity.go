@@ -16,14 +16,14 @@ import (
 
 // Plano define os parâmetros de cobrança de mensalidades.
 type Plano struct {
-	ID            uuid.UUID
-	Nome          string
-	DiasSemana    int
-	ValorMensal   decimal.Decimal
-	DiaVencimento int
-	Ativo         bool
-	CriadoEm      time.Time
-	AtualizadoEm  time.Time
+	ID              uuid.UUID
+	Nome            string
+	DiasSemana      int
+	ValorMensal     decimal.Decimal
+	DiaVencimento   int
+	Ativo           bool
+	CriadoEm       time.Time
+	AtualizadoEm   time.Time
 }
 
 // NewPlano cria um Plano validado.
@@ -45,8 +45,8 @@ func NewPlano(nome string, diasSemana int, valorMensal decimal.Decimal, diaVenci
 		ValorMensal:   valorMensal,
 		DiaVencimento: diaVencimento,
 		Ativo:         true,
-		CriadoEm:      now,
-		AtualizadoEm:  now,
+		CriadoEm:     now,
+		AtualizadoEm: now,
 	}, nil
 }
 
@@ -65,13 +65,13 @@ const (
 
 // Contrato vincula um Atleta a um Plano com valor acordado.
 type Contrato struct {
-	ID              uuid.UUID
-	AtletaID        uuid.UUID
-	PlanoID         uuid.UUID
-	DataInicio      time.Time
-	DataFim         *time.Time
-	ValorContratado decimal.Decimal
-	Status          StatusContrato
+	ID               uuid.UUID
+	AtletaID         uuid.UUID
+	PlanoID          uuid.UUID
+	DataInicio       time.Time
+	DataFim          *time.Time
+	ValorContratado  decimal.Decimal
+	Status           StatusContrato
 	CriadoEm        time.Time
 	AtualizadoEm    time.Time
 }
@@ -89,8 +89,8 @@ func NewContrato(atletaID, planoID uuid.UUID, dataInicio time.Time, valorContrat
 		DataInicio:      dataInicio,
 		ValorContratado: valorContratado,
 		Status:          ContratoAtivo,
-		CriadoEm:        now,
-		AtualizadoEm:    now,
+		CriadoEm:       now,
+		AtualizadoEm:   now,
 	}, nil
 }
 
@@ -123,18 +123,18 @@ const (
 
 // Mensalidade é o Aggregate Root do contexto Financeiro.
 type Mensalidade struct {
-	ID             uuid.UUID
-	ContratoID     uuid.UUID
-	AtletaID       uuid.UUID
-	CompetenciaAno int
-	CompetenciaMes int
-	DataVencimento time.Time
-	Valor          decimal.Decimal
-	ValorPago      *decimal.Decimal
-	Status         StatusMensalidade
-	DataPagamento  *time.Time
-	FormaPagamento *string
-	Observacao     *string
+	ID              uuid.UUID
+	ContratoID      uuid.UUID
+	AtletaID        uuid.UUID
+	CompetenciaAno  int
+	CompetenciaMes  int
+	DataVencimento  time.Time
+	Valor           decimal.Decimal
+	ValorPago       *decimal.Decimal
+	Status          StatusMensalidade
+	DataPagamento   *time.Time
+	FormaPagamento  *string
+	Observacao      *string
 	CriadoEm       time.Time
 	AtualizadoEm   time.Time
 }

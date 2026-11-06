@@ -41,11 +41,11 @@ func TestTreino_SetHorario(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		ini, fim string
-		wantErr  bool
-		wantIni  string
-		wantFim  string
+		name        string
+		ini, fim    string
+		wantErr     bool
+		wantIni     string
+		wantFim     string
 	}{
 		{"ambos vazios mantém nulo", "", "", false, "", ""},
 		{"horário válido HH:MM", "08:00", "10:00", false, "08:00", "10:00"},

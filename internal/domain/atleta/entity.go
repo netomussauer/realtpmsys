@@ -44,9 +44,9 @@ type Atleta struct {
 	Telefone             *string
 	Status               Status
 	UsuarioResponsavelID *uuid.UUID
-	CriadoEm             time.Time
-	AtualizadoEm         time.Time
-	DeletadoEm           *time.Time
+	CriadoEm            time.Time
+	AtualizadoEm        time.Time
+	DeletadoEm          *time.Time
 }
 
 // New cria um Atleta validado. Retorna erro se as regras de domínio forem violadas.
@@ -63,8 +63,8 @@ func New(nome string, dataNascimento time.Time) (*Atleta, error) {
 		Nome:           nome,
 		DataNascimento: dataNascimento,
 		Status:         StatusAtivo,
-		CriadoEm:       now,
-		AtualizadoEm:   now,
+		CriadoEm:      now,
+		AtualizadoEm:  now,
 	}, nil
 }
 
