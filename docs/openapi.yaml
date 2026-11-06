@@ -85,19 +85,70 @@ components:
       type: object
       properties:
         access_token:        { type: string, description: "JWT HS256 com claim `typ=access`. Usar em `Authorization: Bearer <token>` nas rotas /api/v1/*." }
-        refresh_token:       { type: string, description: "JWT HS256 com claim `typ=refresh`. Usado apenas em POST /auth/refresh." }
+        refresh_token:       { type: string, description: "JWT HS256 com claim `typ=refresh`, persistido (só o hash SHA-256), de uso único e rotativo. Usado apenas em POST /auth/refresh e /auth/logout." }
         token_type:          { type: string, example: "Bearer" }
         expires_at:          { type: string, format: date-time, description: "Expiração do access_token (UTC)." }
         refresh_expires_at:  { type: string, format: date-time, description: "Expiração do refresh_token (UTC)." }
         user_id:             { type: string, format: uuid }
         perfil:              { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
+        deve_trocar_senha:   { type: boolean, description: "true quando a senha é temporária. O access token carrega o claim `dts` e o backend responde 403 `PASSWORD_CHANGE_REQUIRED` em tudo, exceto PATCH /api/v1/me/senha." }
 
     RefreshTokenResponse:
       type: object
       properties:
-        access_token: { type: string, description: "Novo JWT `typ=access`. O refresh_token original NÃO rotaciona — continua válido até `refresh_expires_at` original." }
-        token_type:   { type: string, example: "Bearer" }
-        expires_at:   { type: string, format: date-time }
+        access_token:        { type: string, description: "Novo JWT `typ=access`." }
+        refresh_token:       { type: string, description: "NOVO refresh token. O apresentado foi consumido e deixa de valer — o cliente DEVE substituí-lo." }
+        token_type:          { type: string, example: "Bearer" }
+        expires_at:          { type: string, format: date-time }
+        refresh_expires_at:  { type: string, format: date-time, description: "Expiração ABSOLUTA da sessão: a rotação não a estende (igual à do login original)." }
+        user_id:             { type: string, format: uuid }
+        perfil:              { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
+        deve_trocar_senha:   { type: boolean }
+
+    Usuario:
+      type: object
+      description: Conta de acesso. Nunca expõe `senha_hash`.
+      properties:
+        id:                { type: string, format: uuid }
+        email:             { type: string, format: email }
+        nome:              { type: string, description: "Vazio quando a conta não tem nome (ex.: contas semeadas)." }
+        perfil:            { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
+        ativo:             { type: boolean }
+        deve_trocar_senha: { type: boolean }
+        criado_em:         { type: string, format: date-time }
+        atualizado_em:     { type: string, format: date-time }
+
+    UsuarioComSenhaTemporaria:
+      allOf:
+        - $ref: "#/components/schemas/Usuario"
+        - type: object
+          properties:
+            senha_temporaria:
+              type: string
+              description: "Senha em texto puro, devolvida UMA vez (resposta com `Cache-Control: no-store`). Não é persistida nem logada."
+
+    CriarUsuarioRequest:
+      type: object
+      required: [email, perfil]
+      properties:
+        email:  { type: string, format: email, maxLength: 254 }
+        nome:   { type: string, maxLength: 150 }
+        perfil: { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
+
+    AtualizarUsuarioRequest:
+      type: object
+      description: Campos omitidos não são alterados. Mudar o `perfil` revoga os refresh tokens do usuário.
+      properties:
+        nome:   { type: string, maxLength: 150 }
+        perfil: { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
+
+    AlterarSenhaRequest:
+      type: object
+      required: [senha_atual, nova_senha]
+      properties:
+        senha_atual:   { type: string }
+        nova_senha:    { type: string, minLength: 10, maxLength: 72, description: "Mínimo 10 caracteres, ao menos uma letra e um dígito, máx. 72 bytes (limite do bcrypt)." }
+        refresh_token: { type: string, description: "Opcional. Se pertencer ao usuário, a sessão correspondente é preservada e as demais são revogadas; sem ele, todas são revogadas." }
         user_id:      { type: string, format: uuid }
         perfil:       { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] }
 
@@ -502,17 +553,25 @@ paths:
   /auth/refresh:
     post:
       tags: [Autenticação]
-      summary: Renova access token usando refresh token
+      summary: Renova a sessão (refresh rotativo)
       security: []
       description: |
-        Aceita um refresh token (`typ=refresh`) emitido por `/auth/login` e
-        devolve um novo access token. O refresh token **não rotaciona** —
-        permanece válido até a data original em `refresh_expires_at`.
+        Aceita um refresh token (`typ=refresh`) emitido por `/auth/login` ou
+        por um refresh anterior e devolve um **novo par** access + refresh.
+        O refresh token apresentado é **consumido**: só o novo continua
+        válido. A expiração absoluta da sessão não é estendida pela rotação.
+
+        **Detecção de reuso:** reapresentar um refresh já consumido, fora de
+        uma janela de 10 s (tolerância a requisições concorrentes legítimas),
+        é tratado como possível roubo e **revoga toda a cadeia** (a "família"
+        do login) — inclusive o token novo. Dentro da janela, a requisição é
+        apenas recusada.
 
         Rejeições retornam **401**:
         - refresh_token vazio, malformado ou com assinatura inválida
         - typ ≠ refresh (impede uso de access token aqui)
-        - usuário do token foi removido ou está inativo
+        - token inexistente no banco (ex.: emitido antes da persistência), expirado ou revogado
+        - usuário do token foi removido ou está inativo (a família é revogada)
       requestBody:
         required: true
         content:
@@ -538,6 +597,172 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  /auth/logout:
+    post:
+      tags: [Autenticação]
+      summary: Encerra a sessão (revoga a família do refresh token)
+      security: []
+      description: |
+        Revoga o refresh token informado e toda a sua cadeia de rotação.
+        Idempotente e sem enumeração: token desconhecido, já revogado ou
+        vazio também respondem **204**. O access token continua válido até
+        expirar (JWT stateless).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "204": { description: Sessão encerrada }
+        "400":
+          description: Payload inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProblemDetail" }
+
+  # ---- GESTÃO DE CONTAS ------------------------------------------------------
+
+  /api/v1/usuarios:
+    get:
+      tags: [Contas]
+      summary: Lista contas (ADMIN)
+      parameters:
+        - { name: busca,    in: query, schema: { type: string }, description: "Casa com e-mail ou nome (ILIKE)." }
+        - { name: perfil,   in: query, schema: { type: string, enum: [ADMIN, TREINADOR, RESPONSAVEL] } }
+        - { name: ativo,    in: query, schema: { type: boolean } }
+        - { name: page,     in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Usuario" } }
+                  pagination:
+                    type: object
+                    properties:
+                      total:    { type: integer }
+                      page:     { type: integer }
+                      per_page: { type: integer }
+        "400": { description: "Filtro inválido (perfil/ativo)", content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+        "403": { description: Apenas ADMIN }
+    post:
+      tags: [Contas]
+      summary: Cria conta com senha temporária (ADMIN)
+      description: |
+        O sistema gera uma senha aleatória (16 caracteres), devolvida uma única
+        vez em `senha_temporaria`. A conta nasce com `deve_trocar_senha=true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CriarUsuarioRequest" }
+      responses:
+        "201":
+          description: Conta criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsuarioComSenhaTemporaria" }
+        "403": { description: Apenas ADMIN }
+        "409": { description: E-mail já em uso, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+        "422": { description: E-mail ou perfil inválido, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+
+  /api/v1/usuarios/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Contas]
+      summary: Detalhe da conta (ADMIN)
+      responses:
+        "200": { description: Conta, content: { application/json: { schema: { $ref: "#/components/schemas/Usuario" } } } }
+        "403": { description: Apenas ADMIN }
+        "404": { description: Não encontrada }
+    put:
+      tags: [Contas]
+      summary: Atualiza nome e/ou perfil (ADMIN)
+      description: |
+        Um ADMIN não pode rebaixar a própria conta nem o último ADMIN ativo
+        (422). Mudar o perfil revoga os refresh tokens do usuário.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AtualizarUsuarioRequest" }
+      responses:
+        "200": { description: Conta atualizada, content: { application/json: { schema: { $ref: "#/components/schemas/Usuario" } } } }
+        "403": { description: Apenas ADMIN }
+        "404": { description: Não encontrada }
+        "422": { description: "Perfil inválido, auto-modificação ou último administrador", content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+
+  /api/v1/usuarios/{id}/ativar:
+    patch:
+      tags: [Contas]
+      summary: Reativa a conta (ADMIN)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Conta reativada, content: { application/json: { schema: { $ref: "#/components/schemas/Usuario" } } } }
+        "403": { description: Apenas ADMIN }
+        "404": { description: Não encontrada }
+
+  /api/v1/usuarios/{id}/desativar:
+    patch:
+      tags: [Contas]
+      summary: Desativa a conta e revoga suas sessões (ADMIN)
+      description: |
+        Revoga todos os refresh tokens do usuário. O access token já emitido
+        continua válido até expirar. Um ADMIN não pode desativar a si mesmo
+        nem o último ADMIN ativo (422).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Conta desativada, content: { application/json: { schema: { $ref: "#/components/schemas/Usuario" } } } }
+        "403": { description: Apenas ADMIN }
+        "404": { description: Não encontrada }
+        "422": { description: Auto-modificação ou último administrador, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+
+  /api/v1/usuarios/{id}/redefinir-senha:
+    post:
+      tags: [Contas]
+      summary: Redefine a senha para uma temporária (ADMIN)
+      description: |
+        Gera nova senha temporária (devolvida uma vez), marca
+        `deve_trocar_senha=true` e revoga os refresh tokens do usuário.
+        Não é permitido redefinir a própria senha por aqui (422) — use
+        `PATCH /api/v1/me/senha`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Senha redefinida, content: { application/json: { schema: { $ref: "#/components/schemas/UsuarioComSenhaTemporaria" } } } }
+        "403": { description: Apenas ADMIN }
+        "404": { description: Não encontrada }
+        "422": { description: Tentativa de redefinir a própria senha, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+
+  /api/v1/me/senha:
+    patch:
+      tags: [Contas]
+      summary: Troca a própria senha (qualquer perfil)
+      description: |
+        Único endpoint liberado para sessões com senha temporária
+        (`deve_trocar_senha=true`). Limpa a flag e revoga as demais sessões.
+        Depois da troca o cliente deve renovar a sessão (`/auth/refresh`) para
+        obter um access token sem o claim `dts`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AlterarSenhaRequest" }
+      responses:
+        "204": { description: Senha alterada }
+        "400": { description: Campos obrigatórios ausentes ou payload inválido, content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
+        "422": { description: "Senha atual incorreta, nova senha fraca ou igual à atual", content: { application/json: { schema: { $ref: "#/components/schemas/ProblemDetail" } } } }
 
   # ---- ATLETAS ---------------------------------------------------------------
 
