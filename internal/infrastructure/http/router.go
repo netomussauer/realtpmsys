@@ -59,6 +59,7 @@ func NewRouter(jwtSecret string, logger *slog.Logger, h Handlers) http.Handler {
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/login", h.Auth.Login)
 		r.Post("/refresh", h.Auth.Refresh)
+		r.Post("/logout", h.Auth.Logout)
 	})
 
 	// ── API v1 (JWT obrigatório) ─────────────────────────────────────────────

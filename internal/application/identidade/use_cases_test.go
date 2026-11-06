@@ -72,7 +72,7 @@ func TestLoginUseCase_Execute_Sucesso(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "senha-correta")
 	repo := &fakeUsuarioRepo{usuarioByEmail: usuario}
 
-	uc := NewLoginUseCase(repo, testSecret, 30, 7)
+	uc := NewLoginUseCase(repo, newFakeTokens(), testSecret, 30, 7)
 	out, err := uc.Execute(ctx, LoginInput{Email: "user@example.com", Senha: "senha-correta"})
 
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestLoginUseCase_Execute_Sucesso(t *testing.T) {
 
 func TestLoginUseCase_Execute_UsuarioNaoEncontrado(t *testing.T) {
 	repo := &fakeUsuarioRepo{usuarioByEmail: nil}
-	uc := NewLoginUseCase(repo, testSecret, 30, 7)
+	uc := NewLoginUseCase(repo, newFakeTokens(), testSecret, 30, 7)
 
 	out, err := uc.Execute(context.Background(), LoginInput{Email: "ghost@example.com", Senha: "qualquer"})
 
@@ -114,7 +114,7 @@ func TestLoginUseCase_Execute_UsuarioInativo(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "senha")
 	usuario.Ativo = false
 	repo := &fakeUsuarioRepo{usuarioByEmail: usuario}
-	uc := NewLoginUseCase(repo, testSecret, 30, 7)
+	uc := NewLoginUseCase(repo, newFakeTokens(), testSecret, 30, 7)
 
 	out, err := uc.Execute(context.Background(), LoginInput{Email: "user@example.com", Senha: "senha"})
 
@@ -126,7 +126,7 @@ func TestLoginUseCase_Execute_UsuarioInativo(t *testing.T) {
 func TestLoginUseCase_Execute_SenhaInvalida(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "senha-correta")
 	repo := &fakeUsuarioRepo{usuarioByEmail: usuario}
-	uc := NewLoginUseCase(repo, testSecret, 30, 7)
+	uc := NewLoginUseCase(repo, newFakeTokens(), testSecret, 30, 7)
 
 	out, err := uc.Execute(context.Background(), LoginInput{Email: "user@example.com", Senha: "senha-errada"})
 
@@ -138,7 +138,7 @@ func TestLoginUseCase_Execute_SenhaInvalida(t *testing.T) {
 func TestLoginUseCase_Execute_ErroNoRepositorio(t *testing.T) {
 	repoErr := errors.New("conexão perdida")
 	repo := &fakeUsuarioRepo{errByEmail: repoErr}
-	uc := NewLoginUseCase(repo, testSecret, 30, 7)
+	uc := NewLoginUseCase(repo, newFakeTokens(), testSecret, 30, 7)
 
 	out, err := uc.Execute(context.Background(), LoginInput{Email: "user@example.com", Senha: "senha"})
 
@@ -163,10 +163,11 @@ func emitirParaTeste(t *testing.T, secret string, u *identidade.Usuario, typ str
 
 func TestRefreshTokenUseCase_Execute_Sucesso(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "x")
-	refresh := emitirParaTeste(t, testSecret, usuario, tokenTypeRefresh, time.Now().Add(time.Hour))
+	tokens := newFakeTokens()
+	refresh := refreshParaTeste(t, tokens, usuario, time.Now().Add(time.Hour))
 
 	repo := &fakeUsuarioRepo{usuarioByID: usuario}
-	uc := NewRefreshTokenUseCase(repo, testSecret, 30)
+	uc := NewRefreshTokenUseCase(repo, tokens, testSecret, 30)
 
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: refresh})
 
@@ -183,7 +184,7 @@ func TestRefreshTokenUseCase_Execute_Sucesso(t *testing.T) {
 }
 
 func TestRefreshTokenUseCase_Execute_TokenVazio(t *testing.T) {
-	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, testSecret, 30)
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, newFakeTokens(), testSecret, 30)
 
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: ""})
 
@@ -192,7 +193,7 @@ func TestRefreshTokenUseCase_Execute_TokenVazio(t *testing.T) {
 }
 
 func TestRefreshTokenUseCase_Execute_TokenInvalido(t *testing.T) {
-	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, testSecret, 30)
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, newFakeTokens(), testSecret, 30)
 
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: "isto-nao-eh-um-jwt"})
 
@@ -204,7 +205,7 @@ func TestRefreshTokenUseCase_Execute_TokenAssinadoComOutroSegredo(t *testing.T) 
 	usuario := novoUsuarioComSenha(t, "x")
 	tokenAlheio := emitirParaTeste(t, "outro-segredo", usuario, tokenTypeRefresh, time.Now().Add(time.Hour))
 
-	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, testSecret, 30)
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, newFakeTokens(), testSecret, 30)
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: tokenAlheio})
 
 	assert.Nil(t, out)
@@ -216,7 +217,7 @@ func TestRefreshTokenUseCase_Execute_AccessTokenNaoServeComoRefresh(t *testing.T
 	// Token com typ=access — RefreshTokenUseCase deve rejeitar.
 	access := emitirParaTeste(t, testSecret, usuario, tokenTypeAccess, time.Now().Add(time.Hour))
 
-	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, testSecret, 30)
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{}, newFakeTokens(), testSecret, 30)
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: access})
 
 	assert.Nil(t, out)
@@ -227,7 +228,7 @@ func TestRefreshTokenUseCase_Execute_TokenExpirado(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "x")
 	expirado := emitirParaTeste(t, testSecret, usuario, tokenTypeRefresh, time.Now().Add(-time.Hour))
 
-	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{usuarioByID: usuario}, testSecret, 30)
+	uc := NewRefreshTokenUseCase(&fakeUsuarioRepo{usuarioByID: usuario}, newFakeTokens(), testSecret, 30)
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: expirado})
 
 	assert.Nil(t, out)
@@ -236,10 +237,11 @@ func TestRefreshTokenUseCase_Execute_TokenExpirado(t *testing.T) {
 
 func TestRefreshTokenUseCase_Execute_UsuarioSumiuDoBanco(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "x")
-	refresh := emitirParaTeste(t, testSecret, usuario, tokenTypeRefresh, time.Now().Add(time.Hour))
+	tokens := newFakeTokens()
+	refresh := refreshParaTeste(t, tokens, usuario, time.Now().Add(time.Hour))
 
 	repo := &fakeUsuarioRepo{usuarioByID: nil} // GetByID devolve nil sem erro
-	uc := NewRefreshTokenUseCase(repo, testSecret, 30)
+	uc := NewRefreshTokenUseCase(repo, tokens, testSecret, 30)
 
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: refresh})
 
@@ -250,10 +252,11 @@ func TestRefreshTokenUseCase_Execute_UsuarioSumiuDoBanco(t *testing.T) {
 func TestRefreshTokenUseCase_Execute_UsuarioInativo(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "x")
 	usuario.Ativo = false
-	refresh := emitirParaTeste(t, testSecret, usuario, tokenTypeRefresh, time.Now().Add(time.Hour))
+	tokens := newFakeTokens()
+	refresh := refreshParaTeste(t, tokens, usuario, time.Now().Add(time.Hour))
 
 	repo := &fakeUsuarioRepo{usuarioByID: usuario}
-	uc := NewRefreshTokenUseCase(repo, testSecret, 30)
+	uc := NewRefreshTokenUseCase(repo, tokens, testSecret, 30)
 
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: refresh})
 
@@ -263,11 +266,12 @@ func TestRefreshTokenUseCase_Execute_UsuarioInativo(t *testing.T) {
 
 func TestRefreshTokenUseCase_Execute_ErroNoRepositorio(t *testing.T) {
 	usuario := novoUsuarioComSenha(t, "x")
-	refresh := emitirParaTeste(t, testSecret, usuario, tokenTypeRefresh, time.Now().Add(time.Hour))
+	tokens := newFakeTokens()
+	refresh := refreshParaTeste(t, tokens, usuario, time.Now().Add(time.Hour))
 
 	repoErr := errors.New("db caiu")
 	repo := &fakeUsuarioRepo{errByID: repoErr}
-	uc := NewRefreshTokenUseCase(repo, testSecret, 30)
+	uc := NewRefreshTokenUseCase(repo, tokens, testSecret, 30)
 
 	out, err := uc.Execute(context.Background(), RefreshTokenInput{RefreshToken: refresh})
 
@@ -299,4 +303,13 @@ func TestEmitirToken_ClaimsPadrao(t *testing.T) {
 	assert.Equal(t, string(usuario.Perfil), claims["perfil"])
 	assert.Equal(t, tokenTypeAccess, claims["typ"])
 	assert.EqualValues(t, exp.Unix(), int64(claims["exp"].(float64)))
+}
+
+// refreshParaTeste emite um refresh token válido e o persiste no fake, como o
+// Login faria.
+func refreshParaTeste(t *testing.T, tokens *fakeTokens, u *identidade.Usuario, exp time.Time) string {
+	t.Helper()
+	tk, err := emitirEPersistirRefresh(context.Background(), tokens, []byte(testSecret), u, uuid.New(), exp)
+	require.NoError(t, err)
+	return tk
 }

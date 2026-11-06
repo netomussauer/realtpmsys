@@ -117,8 +117,9 @@ func run(logger *slog.Logger) error {
 	criarPlano := appplano.NewCriarPlanoUseCase(planoRepo)
 
 	// Use Cases — Identidade
-	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
-	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
+	loginUseCase := appidentidade.NewLoginUseCase(usuarioRepo, refreshTokenRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes, cfg.JWT.RefreshExpireDays)
+	refreshTokenUseCase := appidentidade.NewRefreshTokenUseCase(usuarioRepo, refreshTokenRepo, cfg.JWT.Secret, cfg.JWT.AccessExpireMinutes)
+	logoutUseCase := appidentidade.NewLogoutUseCase(refreshTokenRepo)
 	criarUsuario := appidentidade.NewCriarUsuarioUseCase(usuarioRepo)
 	atualizarUsuario := appidentidade.NewAtualizarUsuarioUseCase(usuarioRepo, refreshTokenRepo)
 	alterarStatusUsuario := appidentidade.NewAlterarStatusUsuarioUseCase(usuarioRepo, refreshTokenRepo)
@@ -162,7 +163,7 @@ func run(logger *slog.Logger) error {
 
 	// Handlers
 	handlers := infrahttp.Handlers{
-		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase),
+		Auth:        handler.NewAuthHandler(loginUseCase, refreshTokenUseCase, logoutUseCase),
 		Atleta:      handler.NewAtletaHandler(cadastrarAtleta, atualizarAtleta, mudarStatusAtleta, removerAtleta, atletaRepo),
 		Responsavel: handler.NewResponsavelHandler(adicionarResponsavel, atualizarResponsavel, removerResponsavel, setUniforme, responsavelRepo, uniformeRepo, atletaRepo),
 		Treinador:   handler.NewTreinadorHandler(cadastrarTreinador, atualizarTreinador, mudarStatusTreinador, removerTreinador, treinadorRepo),

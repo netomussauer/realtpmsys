@@ -14,10 +14,11 @@ import (
 type AuthHandler struct {
 	login   *appidentidade.LoginUseCase
 	refresh *appidentidade.RefreshTokenUseCase
+	logout  *appidentidade.LogoutUseCase
 }
 
-func NewAuthHandler(login *appidentidade.LoginUseCase, refresh *appidentidade.RefreshTokenUseCase) *AuthHandler {
-	return &AuthHandler{login: login, refresh: refresh}
+func NewAuthHandler(login *appidentidade.LoginUseCase, refresh *appidentidade.RefreshTokenUseCase, logout *appidentidade.LogoutUseCase) *AuthHandler {
+	return &AuthHandler{login: login, refresh: refresh, logout: logout}
 }
 
 // ─── POST /auth/login ────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		RefreshExpiresAt: out.RefreshExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
 		UserID:           out.UserID,
 		Perfil:           string(out.Perfil),
+		DeveTrocarSenha:  out.DeveTrocarSenha,
 	})
 }
 
@@ -81,12 +83,33 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteJSON(w, http.StatusOK, refreshResponse{
-		AccessToken: out.AccessToken,
-		TokenType:   "Bearer",
-		ExpiresAt:   out.AccessExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
-		UserID:      out.UserID,
-		Perfil:      string(out.Perfil),
+		AccessToken:      out.AccessToken,
+		RefreshToken:     out.RefreshToken,
+		TokenType:        "Bearer",
+		ExpiresAt:        out.AccessExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
+		RefreshExpiresAt: out.RefreshExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
+		UserID:           out.UserID,
+		Perfil:           string(out.Perfil),
+		DeveTrocarSenha:  out.DeveTrocarSenha,
 	})
+}
+
+// ─── POST /auth/logout ───────────────────────────────────────────────────────
+
+// Logout revoga a sessão (família do refresh token). Público: quem tem o
+// refresh token pode encerrá-lo, e a resposta não revela se ele existia.
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if !decodeBody(w, r, &body) {
+		return
+	}
+	if err := h.logout.Execute(r.Context(), strings.TrimSpace(body.RefreshToken)); err != nil {
+		response.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -99,12 +122,16 @@ type loginResponse struct {
 	RefreshExpiresAt string    `json:"refresh_expires_at"`
 	UserID           uuid.UUID `json:"user_id"`
 	Perfil           string    `json:"perfil"`
+	DeveTrocarSenha  bool      `json:"deve_trocar_senha"`
 }
 
 type refreshResponse struct {
-	AccessToken string    `json:"access_token"`
-	TokenType   string    `json:"token_type"`
-	ExpiresAt   string    `json:"expires_at"`
-	UserID      uuid.UUID `json:"user_id"`
-	Perfil      string    `json:"perfil"`
+	AccessToken      string    `json:"access_token"`
+	RefreshToken     string    `json:"refresh_token"`
+	TokenType        string    `json:"token_type"`
+	ExpiresAt        string    `json:"expires_at"`
+	RefreshExpiresAt string    `json:"refresh_expires_at"`
+	UserID           uuid.UUID `json:"user_id"`
+	Perfil           string    `json:"perfil"`
+	DeveTrocarSenha  bool      `json:"deve_trocar_senha"`
 }
