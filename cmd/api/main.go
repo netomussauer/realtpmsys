@@ -182,6 +182,8 @@ func run(logger *slog.Logger) error {
 	scheduler := cron.New(cron.WithLocation(mustLoadLocation("America/Sao_Paulo")))
 	mensalidadeJob := jobs.NewMensalidadeJob(gerarMensalidades, marcarVencidas, logger)
 	mensalidadeJob.Register(scheduler)
+	// Purga diária de refresh tokens expirados há mais de 7 dias (03:30).
+	jobs.NewRefreshTokenJob(refreshTokenRepo, logger).Register(scheduler)
 	scheduler.Start()
 	defer scheduler.Stop()
 

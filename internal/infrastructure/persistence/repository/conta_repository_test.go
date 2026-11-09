@@ -381,3 +381,52 @@ func TestRefreshTokenRepository_RevogarSeAtivo_SoUmaChamadaVence(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok, "token já revogado")
 }
+
+func TestRefreshTokenRepository_PurgarExpirados(t *testing.T) {
+	pool := setupTestDB(t)
+	truncateAll(t, pool)
+	users := NewPgxUsuarioRepository(pool)
+	repo := NewPgxRefreshTokenRepository(pool)
+	ctx := context.Background()
+
+	u := novoUsuarioTeste(t, "p@test.local", identidade.PerfilAdmin)
+	require.NoError(t, users.Save(ctx, u))
+
+	agora := time.Now().UTC()
+	semente := func(hash string, expiraEm time.Time, revogado bool) {
+		tk := novoRefreshTeste(u.ID, uuid.New(), hash)
+		tk.ExpiraEm = expiraEm
+		require.NoError(t, repo.Save(ctx, tk))
+		if revogado {
+			require.NoError(t, repo.Revogar(ctx, tk.ID))
+		}
+	}
+	semente("expirado-ha-30d", agora.Add(-30*24*time.Hour), false)
+	semente("expirado-ha-30d-revogado", agora.Add(-30*24*time.Hour), true)
+	semente("expirado-ha-8d", agora.Add(-8*24*time.Hour), false)
+	semente("expirado-ha-1d", agora.Add(-24*time.Hour), false)    // dentro da retenção
+	semente("ativo", agora.Add(24*time.Hour), false)              // válido
+	semente("revogado-mas-valido", agora.Add(24*time.Hour), true) // reuso depende dele
+
+	corte := agora.Add(-7 * 24 * time.Hour)
+	n, err := repo.PurgarExpirados(ctx, corte)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, n, "só os 3 expirados há mais de 7 dias")
+
+	existe := func(hash string) bool {
+		tk, err := repo.GetByHash(ctx, hash)
+		require.NoError(t, err)
+		return tk != nil
+	}
+	assert.False(t, existe("expirado-ha-30d"))
+	assert.False(t, existe("expirado-ha-30d-revogado"))
+	assert.False(t, existe("expirado-ha-8d"))
+	assert.True(t, existe("expirado-ha-1d"), "ainda dentro da retenção")
+	assert.True(t, existe("ativo"), "token válido nunca é apagado")
+	assert.True(t, existe("revogado-mas-valido"), "revogado mas não expirado fica: sustenta a detecção de reuso")
+
+	// Idempotente: segunda execução não encontra mais nada.
+	n, err = repo.PurgarExpirados(ctx, corte)
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, n)
+}

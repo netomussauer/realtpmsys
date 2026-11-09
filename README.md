@@ -180,7 +180,8 @@ make run
 >   `/relatorios/frequencia/{atleta_id}` e `/relatorios/frequencia/turma/{turma_id}`
 >   (ADMIN+TREINADOR) com taxa de presença calculada.
 > - Cron jobs ativos: geração de mensalidades `0 6 1 * *` (mensal) e
->   marcação `PENDENTE→VENCIDO` `0 1 * * *` (diário)
+>   marcação `PENDENTE→VENCIDO` `0 1 * * *` (diário) e purga de refresh
+>   tokens expirados há mais de 7 dias `30 3 * * *` (diário, ADR-013)
 >
 > **Credenciais iniciais (após `make migrate-up`):**
 > `admin@realtpmsys.local` / `admin123` e `responsavel@realtpmsys.local` / `Test@1234`

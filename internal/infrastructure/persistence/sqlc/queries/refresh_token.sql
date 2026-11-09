@@ -42,3 +42,11 @@ UPDATE refresh_tokens
 SET revogado_em = NOW()
 WHERE id = $1
   AND revogado_em IS NULL;
+
+-- name: PurgarRefreshTokensExpirados :execrows
+-- Remove refresh tokens cuja expiração é anterior a $1. Só os JÁ EXPIRADOS: um
+-- token revogado mas ainda dentro da validade precisa permanecer, pois é ele
+-- que permite detectar o reuso (token consumido reapresentado). Usa
+-- idx_refresh_tokens_expira.
+DELETE FROM refresh_tokens
+WHERE expira_em < $1;

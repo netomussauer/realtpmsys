@@ -62,6 +62,23 @@ func (q *Queries) InsertRefreshToken(ctx context.Context, arg InsertRefreshToken
 	return err
 }
 
+const purgarRefreshTokensExpirados = `-- name: PurgarRefreshTokensExpirados :execrows
+DELETE FROM refresh_tokens
+WHERE expira_em < $1
+`
+
+// Remove refresh tokens cuja expiração é anterior a $1. Só os JÁ EXPIRADOS: um
+// token revogado mas ainda dentro da validade precisa permanecer, pois é ele
+// que permite detectar o reuso (token consumido reapresentado). Usa
+// idx_refresh_tokens_expira.
+func (q *Queries) PurgarRefreshTokensExpirados(ctx context.Context, expiraEm time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, purgarRefreshTokensExpirados, expiraEm)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revogarRefreshToken = `-- name: RevogarRefreshToken :exec
 UPDATE refresh_tokens
 SET revogado_em = NOW()

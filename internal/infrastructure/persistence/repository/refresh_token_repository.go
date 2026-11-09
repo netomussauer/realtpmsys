@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -93,4 +94,15 @@ func (r *PgxRefreshTokenRepository) RevogarSeAtivo(ctx context.Context, id uuid.
 		return false, fmt.Errorf("RevogarRefreshTokenSeAtivo: %w", err)
 	}
 	return n == 1, nil
+}
+
+// PurgarExpirados apaga os refresh tokens com expiração anterior a `antes` e
+// devolve quantos foram removidos. Só toca em tokens expirados: revogados mas
+// ainda válidos são mantidos (detecção de reuso).
+func (r *PgxRefreshTokenRepository) PurgarExpirados(ctx context.Context, antes time.Time) (int64, error) {
+	n, err := r.queries.PurgarRefreshTokensExpirados(ctx, antes)
+	if err != nil {
+		return 0, fmt.Errorf("PurgarRefreshTokensExpirados: %w", err)
+	}
+	return n, nil
 }
