@@ -31,9 +31,12 @@ metadata:
 spec:
   pipelineRef:
     name: realtpmsys-build-web
+  # O build do Next.js via Kaniko neste lab leva ~27 min (medido em 2026-11-09:
+  # 12:38 -> 13:06). Os 25m anteriores cancelavam o build no limite; mantenha
+  # folga sobre o tempo medido.
   timeouts:
-    pipeline: 30m
-    tasks: 25m
+    pipeline: 45m
+    tasks: 40m
   taskRunTemplate:
     serviceAccountName: tekton-realtpmsys
     podTemplate:
